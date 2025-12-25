@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone*)",
+      "Bash(git checkout*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(python -m venv*)",
+      "Bash(pip install*)",
+      "Bash(playwright install*)",
+      "Bash(pytest*)",
+      "Bash(python scripts/*)",
+      "Bash(make*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./**/*.pem)",
+      "Read(./**/*_key*)",
+      "Bash(curl:*)"
+    ]
+  },
+  "env": {
+    "HALO_TASK_VERSION": "v2",
+    "HALO_MAX_STEPS": "70",
+    "PYTHONUNBUFFERED": "1"
+  },
+  "attribution": {
+    "commit": " (generated with Claude Code)",
+    "pr": ""
+  }
+}

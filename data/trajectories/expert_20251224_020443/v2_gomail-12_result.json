@@ -1,0 +1,11 @@
+{
+  "task_id": "v2.gomail-12",
+  "mode": "expert_rollout",
+  "worker_model": "gpt-4o",
+  "success": false,
+  "reward": 0,
+  "steps": 0,
+  "wall_time": 418.97174,
+  "run_id": "expert_20251224_021918",
+  "timestamp": "2025-12-24T02:26:17.529219"
+}

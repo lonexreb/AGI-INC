@@ -1,0 +1,5 @@
+mode,total_tasks,valid_tasks,init_or_agent_errors,successes,failures,success_rate,median_steps,mean_steps,median_wall_time,mean_wall_time,invalid_action_rate,manager_call_rate,cache_hit_rate,usefulness_label,score_delta
+baseline_worker,10,10,0,0,10,0.0000,0.0,0.0,202.6,202.7,0.0000,0.0000,0.0000,Not useful,+0.0
+hierarchy_mgr_gate,10,10,0,0,10,0.0000,0.0,0.0,290.3,288.7,0.0000,0.0000,0.0000,Not useful,+0.0
+hierarchy_vac,10,10,0,0,10,0.0000,0.0,0.0,293.2,297.0,0.0000,0.0000,0.0000,Not useful,+0.0
+hierarchy_vac_macros,10,10,0,0,10,0.0000,0.0,0.0,275.8,278.8,0.0000,0.0000,0.0000,Not useful,+0.0

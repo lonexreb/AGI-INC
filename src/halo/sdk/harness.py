@@ -1,0 +1,371 @@
+"""Wrapper for REAL.harness integration with HALO Agent.
+
+This module provides the harness configuration and execution functions
+for running HALO Agent with AGI SDK v0.3.5 on REAL Bench tasks.
+
+CRITICAL: Always use task_version="v2" everywhere.
+"""
+
+import dataclasses
+from typing import Optional, Dict, Any
+from agisdk import REAL
+from agisdk.REAL.browsergym.experiments import AbstractAgentArgs
+
+from .agent import HaloAgent
+from ..logging import TrajectoryLogger
+
+
+# Supported modes for evaluation
+SUPPORTED_MODES = [
+    'baseline_worker',           # Worker only, no manager, no caches
+    'hierarchy_mgr_gate',        # Worker + Manager (gated), no caches
+    'hierarchy_vac',             # Worker + Manager + VAC
+    'hierarchy_vac_macros',      # Worker + Manager + VAC + Macro cache (full HALO)
+    # Legacy names
+    'baseline', 'halo', 'halo_cache',
+]
+
+
+def unwrap_single_task_result(result: Any, task_name: str) -> Any:
+    """Unwrap REAL.harness results for a single task.
+
+    REAL.harness.run() returns a dict keyed by canonical task name, even when
+    running a single task. Our evaluation stack expects a per-task record dict.
+    """
+    if isinstance(result, dict):
+        if task_name in result:
+            return result[task_name]
+        if len(result) == 1:
+            return next(iter(result.values()))
+    return result
+
+
+def derive_task_id(task_name: str) -> str:
+    """Derive task_id from canonical v2 task name (e.g., 'v2.omnizon-13' -> 'omnizon-13')."""
+    task_name = ensure_v2_task(task_name)
+    return task_name.split('.', 1)[1] if '.' in task_name else task_name
+
+
+@dataclasses.dataclass
+class HaloAgentArgs(AbstractAgentArgs):
+    """Arguments for the HALO Agent.
+
+    This class configures the HALO agent instance and provides
+    the factory method for creating agent instances.
+    
+    Supported modes:
+    - baseline_worker: Worker only, no manager, no caches
+    - hierarchy_mgr_gate: Worker + Manager (gated), no caches
+    - hierarchy_vac: Worker + Manager + VAC
+    - hierarchy_vac_macros: Worker + Manager + VAC + Macro cache (full HALO)
+    """
+
+    agent_name: str = "HaloAgent"
+
+    # HALO-specific configuration
+    mode: str = "hierarchy_vac_macros"
+    use_macro_cache: bool = True
+    use_action_cache: bool = True
+    use_manager: Optional[bool] = None
+    use_cache: Optional[bool] = None
+    use_macros: Optional[bool] = None
+    worker_model: str = "gpt-4o-mini"
+    manager_model: str = "gpt-4o"
+    max_steps: int = 70  # Default for score-mode; use 25 for speed-mode
+
+    manager_warm_start: Optional[bool] = None
+    enable_recovery_policies: Optional[bool] = None
+    always_call_manager: Optional[bool] = None
+    qwen_backend: Optional[str] = None
+    qwen_base_url: Optional[str] = None
+
+    # Trajectory logging
+    run_id: Optional[str] = None
+    log_trajectories: bool = True
+    traj_output_dir: str = "data/trajectories"
+
+    def make_agent(self) -> HaloAgent:
+        """Create and return an instance of HaloAgent.
+
+        Returns:
+            HaloAgent instance configured with the specified parameters
+        """
+        # Create trajectory logger if enabled
+        traj_logger = None
+        if self.log_trajectories and self.run_id:
+            # Include mode in output directory for organization
+            output_dir = f"{self.traj_output_dir}/{self.mode}"
+            traj_logger = TrajectoryLogger(
+                run_id=self.run_id,
+                output_dir=output_dir,
+                mode=self.mode
+            )
+
+        agent = HaloAgent(
+            mode=self.mode,
+            use_manager=self.use_manager,
+            use_cache=self.use_cache,
+            use_macros=self.use_macros,
+            worker_model=self.worker_model,
+            manager_model=self.manager_model,
+            max_steps=self.max_steps,
+            manager_warm_start=self.manager_warm_start,
+            enable_recovery_policies=self.enable_recovery_policies,
+            always_call_manager=self.always_call_manager,
+            qwen_backend=self.qwen_backend,
+            qwen_base_url=self.qwen_base_url,
+            traj_logger=traj_logger
+        )
+
+        return agent
+
+
+def ensure_v2_task(task_name: str) -> str:
+    """Ensure task name has v2. prefix.
+    
+    CRITICAL: SDK defaults to v1 if version omitted. Always enforce v2.
+    """
+    if not task_name.startswith('v2.'):
+        return f'v2.{task_name}'
+    return task_name
+
+
+def create_harness(
+    agent_args: Optional[HaloAgentArgs] = None,
+    task_name: str = "v2.omnizon-1",
+    headless: bool = True,
+    max_steps: int = 70,
+    use_axtree: bool = True,
+    use_screenshot: bool = True,
+    use_html: bool = False,  # CRITICAL: Must be False per constraints
+    browser_dimensions: tuple = (1280, 720),  # CRITICAL: Must be 1280x720
+    results_dir: Optional[str] = None,
+    leaderboard: bool = False,
+    run_id: Optional[str] = None,
+    mode: str = "hierarchy_vac_macros",
+    **kwargs
+) -> Any:
+    """Create a REAL harness configured for HALO Agent.
+
+    CRITICAL CONSTRAINTS:
+    - task_version is always v2 (enforced via task_name prefix)
+    - browser_dimensions must be (1280, 720)
+    - use_html must be False (AXTree + screenshot only)
+    - max_steps default is 70 for score-mode, use 25 for speed-mode
+
+    Args:
+        agent_args: HaloAgentArgs instance, creates default if None
+        task_name: Name of the task (v2. prefix added if missing)
+        headless: Run browser in headless mode (default: True)
+        max_steps: Maximum steps per episode (default: 70 for score-mode)
+        use_axtree: Include accessibility tree in observations (default: True)
+        use_screenshot: Include screenshots in observations (default: True)
+        use_html: Include HTML in observations (MUST be False)
+        browser_dimensions: Tuple of (width, height) (MUST be 1280x720)
+        results_dir: Directory to save results (default: None)
+        leaderboard: Submit to leaderboard (default: False)
+        run_id: Run ID for identification (default: None)
+        mode: Agent mode (default: hierarchy_vac_macros)
+        **kwargs: Additional arguments to pass to REAL.harness
+
+    Returns:
+        Configured REAL harness instance
+    """
+    # CRITICAL: Enforce v2 task version
+    task_name = ensure_v2_task(task_name)
+    
+    # CRITICAL: Enforce constraints
+    browser_dimensions = (1280, 720)  # Always 1280x720
+    use_html = False  # Never use HTML, only AXTree + screenshot
+    
+    # Create default agent args if not provided
+    if agent_args is None:
+        agent_args = HaloAgentArgs(
+            run_id=run_id, 
+            max_steps=max_steps,
+            mode=mode
+        )
+    else:
+        if run_id:
+            agent_args.run_id = run_id
+        agent_args.max_steps = max_steps
+
+    # Build harness configuration
+    harness_config = {
+        "agentargs": agent_args,
+        "task_name": task_name,
+        "headless": headless,
+        "max_steps": max_steps,
+        "use_axtree": use_axtree,
+        "use_screenshot": use_screenshot,
+        "use_html": use_html,
+        "browser_dimensions": browser_dimensions,
+    }
+
+    # Add optional parameters
+    if results_dir is not None:
+        harness_config["results_dir"] = results_dir
+
+    if leaderboard:
+        harness_config["leaderboard"] = True
+        if run_id is not None:
+            harness_config["run_id"] = run_id
+
+    # Merge any additional kwargs
+    harness_config.update(kwargs)
+
+    # Create and return the harness
+    return REAL.harness(**harness_config)
+
+
+def run_single_task(
+    task_name: str = "v2.omnizon-1",
+    mode: str = "hierarchy_vac_macros",
+    headless: bool = True,
+    max_steps: int = 70,
+    run_id: Optional[str] = None,
+    results_dir: Optional[str] = None,
+    worker_model: Optional[str] = None,
+    manager_model: Optional[str] = None,
+    use_manager: Optional[bool] = None,
+    use_cache: Optional[bool] = None,
+    use_macros: Optional[bool] = None,
+    manager_warm_start: Optional[bool] = None,
+    enable_recovery_policies: Optional[bool] = None,
+    always_call_manager: Optional[bool] = None,
+    qwen_backend: Optional[str] = None,
+    qwen_base_url: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """Run a single task with HALO Agent.
+
+    CRITICAL: Always uses task_version v2 (enforced in create_harness).
+
+    Args:
+        task_name: Name of the task (v2. prefix added if missing)
+        mode: Agent mode:
+            - baseline_worker: Worker only
+            - hierarchy_mgr_gate: Worker + Manager
+            - hierarchy_vac: Worker + Manager + VAC
+            - hierarchy_vac_macros: Full HALO (default)
+        headless: Run browser in headless mode (default: True)
+        max_steps: Maximum steps (default: 70 for score-mode, use 25 for speed-mode)
+        run_id: Run ID for logging
+        results_dir: Directory to save results
+        **kwargs: Additional arguments
+
+    Returns:
+        Dictionary with task results
+    """
+    # Ensure v2 prefix
+    task_name = ensure_v2_task(task_name)
+    task_id = derive_task_id(task_name)
+    
+    agent_args = HaloAgentArgs(
+        mode=mode,
+        max_steps=max_steps,
+        run_id=run_id,
+        worker_model=worker_model or "gpt-4o-mini",
+        manager_model=manager_model or "gpt-4o",
+        use_manager=use_manager,
+        use_cache=use_cache,
+        use_macros=use_macros,
+        manager_warm_start=manager_warm_start,
+        enable_recovery_policies=enable_recovery_policies,
+        always_call_manager=always_call_manager,
+        qwen_backend=qwen_backend,
+        qwen_base_url=qwen_base_url,
+    )
+
+    harness = create_harness(
+        agent_args=agent_args,
+        task_name=task_name,
+        headless=headless,
+        max_steps=max_steps,
+        run_id=run_id,
+        mode=mode,
+        results_dir=results_dir,
+        **kwargs
+    )
+
+    results = harness.run()
+    record = unwrap_single_task_result(results, task_name)
+
+    if not isinstance(record, dict):
+        record = {"raw_result": record}
+
+    record["task_name"] = task_name
+    record["task_id"] = task_id
+
+    return record
+
+
+def run_task_subset(
+    task_names: list,
+    mode: str = "hierarchy_vac_macros",
+    headless: bool = True,
+    max_steps: int = 70,
+    run_id: Optional[str] = None,
+    results_dir: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Dict[str, Any]]:
+    """Run multiple tasks with HALO Agent.
+
+    CRITICAL: Always uses task_version v2.
+
+    Args:
+        task_names: List of task names (v2. prefix added if missing)
+        mode: Agent mode (see run_single_task for options)
+        headless: Run browser in headless mode (default: True)
+        max_steps: Maximum steps (default: 70 for score-mode)
+        run_id: Run ID for logging
+        results_dir: Directory to save results
+        **kwargs: Additional arguments
+
+    Returns:
+        Dictionary mapping task names to results
+    """
+    all_results = {}
+    successes = 0
+    failures = 0
+
+    for i, task_name in enumerate(task_names):
+        # Ensure v2 prefix
+        task_name = ensure_v2_task(task_name)
+        
+        print(f"\n{'='*60}")
+        print(f"[{i+1}/{len(task_names)}] Running task: {task_name} (mode: {mode})")
+        print(f"{'='*60}\n")
+
+        try:
+            result = run_single_task(
+                task_name=task_name,
+                mode=mode,
+                headless=headless,
+                max_steps=max_steps,
+                run_id=run_id,
+                results_dir=results_dir,
+                **kwargs
+            )
+            all_results[task_name] = result
+            
+            success = result.get('success', False)
+            if success:
+                successes += 1
+                print(f"\n✓ Task {task_name} SUCCEEDED")
+            else:
+                failures += 1
+                print(f"\n✗ Task {task_name} FAILED")
+                
+        except Exception as e:
+            print(f"\n✗ Task {task_name} CRASHED: {e}")
+            all_results[task_name] = {"success": False, "error": str(e)}
+            failures += 1
+
+    # Print summary
+    total = len(task_names)
+    print(f"\n{'='*60}")
+    print(f"SUMMARY: {successes}/{total} succeeded ({100*successes/total:.1f}%)")
+    print(f"{'='*60}\n")
+
+    return all_results
