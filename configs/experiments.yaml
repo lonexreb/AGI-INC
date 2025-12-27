@@ -83,6 +83,14 @@ experiments:
     use_cache: true
     use_macros: true
 
+  - name: qwen_grpo
+    mode: qwen_worker_grpo
+    description: "Qwen 3B with GRPO policy optimization"
+    worker_model: models/qwen_grpo_lora
+    use_manager: true
+    use_cache: true
+    use_macros: true
+
   # === ABLATION EXPERIMENTS ===
   
   # E8: Manager-only (no worker decisions)

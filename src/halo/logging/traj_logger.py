@@ -35,6 +35,8 @@ class StepRecord:
     obs_summary: str = ""
     actionable_elements: Optional[List[Dict[str, Any]]] = None
     valid_bids: Optional[List[str]] = None
+    progress_score: float = 0.0
+    milestones: Optional[List[str]] = None
 
 
 @dataclass
@@ -93,6 +95,8 @@ class TrajectoryLogger:
         self.cache_misses: int = 0
         self.error_count: int = 0
 
+        self.run_metadata: Dict[str, Any] = {}
+
     def start_episode(
         self,
         task_id: str,
@@ -149,18 +153,23 @@ class TrajectoryLogger:
 
         self._last_url = ""
 
-        self._write_record(
-            {
-                "type": "episode_start",
-                "task_id": self.current_task_id or "",
-                "task_name": self.current_task_name or "",
-                "run_id": self.run_id,
-                "mode": self.mode,
-                "attempt_idx": self._attempt_idx,
-                "timestamp": datetime.now().isoformat(),
-                "pid": os.getpid(),
-            }
-        )
+        record: Dict[str, Any] = {
+            "type": "episode_start",
+            "task_id": self.current_task_id or "",
+            "task_name": self.current_task_name or "",
+            "run_id": self.run_id,
+            "mode": self.mode,
+            "attempt_idx": self._attempt_idx,
+            "timestamp": datetime.now().isoformat(),
+            "pid": os.getpid(),
+        }
+
+        if self.run_metadata:
+            for k, v in self.run_metadata.items():
+                if k not in record:
+                    record[k] = v
+
+        self._write_record(record)
 
     def log_step(
         self,
@@ -176,6 +185,8 @@ class TrajectoryLogger:
         obs_summary: str = "",
         actionable_elements: Optional[List[Dict[str, Any]]] = None,
         valid_bids: Optional[List[str]] = None,
+        progress_score: float = 0.0,
+        milestones: Optional[List[str]] = None,
     ):
         """Log a single step.
 
@@ -207,6 +218,8 @@ class TrajectoryLogger:
             obs_summary=obs_summary,
             actionable_elements=actionable_elements,
             valid_bids=valid_bids,
+            progress_score=progress_score,
+            milestones=milestones,
         )
 
         self.step_records.append(record)
@@ -232,8 +245,8 @@ class TrajectoryLogger:
         final_message: str = "",
         reward: float = 0.0,
         error: str = "",
-        max_progress_score: float = 0.0,
-        final_progress_score: float = 0.0,
+        max_progress_score: Optional[float] = None,
+        final_progress_score: Optional[float] = None,
     ) -> EpisodeRecord:
         """End current episode and write summary.
 
@@ -246,6 +259,16 @@ class TrajectoryLogger:
             EpisodeRecord summary
         """
         wall_time = time.time() - self.episode_start_time
+
+        if max_progress_score is None:
+            max_progress_score = max(
+                (getattr(step, "progress_score", 0.0) for step in self.step_records),
+                default=0.0,
+            )
+        if final_progress_score is None:
+            final_progress_score = (
+                getattr(self.step_records[-1], "progress_score", 0.0) if self.step_records else 0.0
+            )
 
         record = EpisodeRecord(
             task_id=self.current_task_id or "",

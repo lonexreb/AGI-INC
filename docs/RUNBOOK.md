@@ -35,7 +35,7 @@ pip install agisdk==0.3.5
 playwright install --force
 
 # Install dev dependencies
-pip install pytest python-dotenv
+pip install pytest python-dotenv pyyaml openai
 ```
 
 ### Environment Variables
@@ -48,6 +48,11 @@ cp .env.example .env
 Required variables:
 - `OPENAI_API_KEY` - Your OpenAI API key (used by Worker and Manager policies)
 - `ANTHROPIC_API_KEY` - Your Anthropic API key (optional, for future use)
+
+Optional variables (for Qwen + vLLM):
+- `HALO_WORKER_BACKEND` - Qwen backend (`vllm` or `local`)
+- `HALO_VLLM_URL` - vLLM OpenAI-compatible base URL (e.g., `http://localhost:8000/v1`)
+- `HALO_WORKER_MODEL` - Model ID to request from vLLM (base model like `Qwen/Qwen2.5-3B-Instruct`, or a LoRA adapter name like `qwen_bc`)
 
 ---
 
@@ -147,6 +152,112 @@ python scripts/eval_full_matrix.py --debug --max_steps 10
 - `results/<run_id>/matrix.csv` - Raw metrics
 - `results/<run_id>/matrix.md` - Formatted comparison
 - `results/<run_id>/errors.jsonl` - Error logs with tracebacks
+
+---
+
+## Rollout Sampling (RL Data Collection)
+
+### Rollout Sampler
+
+Use `rollout_sampler.py` to run **N rollouts per task** with explicit `task_seed` control and exploration (`--temperature`).
+
+```bash
+# Run 3 rollouts per task on a configured subset
+python scripts/rollout_sampler.py \
+    --config configs/experiments.yaml \
+    --experiment hierarchy_vac_macros \
+    --subset shopping \
+    --sample_size 50 \
+    --rollouts_per_task 3 \
+    --seed 42 \
+    --task_seed 123 \
+    --temperature 0.7
+
+# Explicit tasks
+python scripts/rollout_sampler.py \
+    --tasks v2.omnizon-13,v2.gomail-1 \
+    --rollouts_per_task 2 \
+    --task_seed 123 \
+    --temperature 0.7
+```
+
+**Outputs:**
+- Trajectories: `data/trajectories/<mode>/<run_id>/...`
+- Summary: `results/<base_run_id>/rollout_summary.jsonl`
+
+### Verify Exploration
+
+Use `verify_exploration.py` to sanity-check that changing `worker_temperature` changes the action sequence, while keeping the same `task_seed`.
+
+```bash
+python scripts/verify_exploration.py \
+    --task v2.gomail-1 \
+    --mode baseline_worker \
+    --task_seed 123 \
+    --temperature_a 0.0 \
+    --temperature_b 0.7 \
+    --compare_steps 10
+```
+
+### Remote GPU + vLLM (Runpod / TensorDock)
+
+Run vLLM on a remote GPU instance (A100/H100/etc) and point HALO to it via `HALO_VLLM_URL`.
+
+**On the GPU machine (Docker recommended):**
+
+```bash
+# Optional: Hugging Face token (some models / higher rate limits)
+export HF_TOKEN=...
+
+# Serve base model
+docker run --runtime nvidia --gpus all \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  --env "HF_TOKEN=$HF_TOKEN" \
+  -p 8000:8000 \
+  --ipc=host \
+  vllm/vllm-openai:latest \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --host 0.0.0.0 \
+  --port 8000
+
+# Serve base model + LoRA adapters (mount your repo checkpoints)
+docker run --runtime nvidia --gpus all \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  -v /path/to/HALO-Agent/checkpoints:/checkpoints \
+  --env "HF_TOKEN=$HF_TOKEN" \
+  -p 8000:8000 \
+  --ipc=host \
+  vllm/vllm-openai:latest \
+  --model Qwen/Qwen2.5-3B-Instruct \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --enable-lora \
+  --lora-modules qwen_bc=/checkpoints/qwen_bc_lora qwen_dpo=/checkpoints/qwen_dpo_lora
+
+# Sanity check
+curl http://localhost:8000/v1/models
+```
+
+**On the machine running HALO (local or remote):**
+
+```bash
+export HALO_WORKER_BACKEND=vllm
+
+# Option A: direct (ensure TCP/8000 is reachable)
+export HALO_VLLM_URL=http://<GPU_PUBLIC_IP>:8000/v1
+
+# Option B: SSH tunnel (recommended)
+# ssh -L 8000:localhost:8000 <user>@<GPU_PUBLIC_IP>
+# export HALO_VLLM_URL=http://localhost:8000/v1
+
+# Base model requests
+HALO_WORKER_MODEL=Qwen/Qwen2.5-3B-Instruct \
+python scripts/eval_subset.py --mode qwen_worker_zero --tasks v2.gomail-1 --max_steps 20
+
+# LoRA adapter requests (must match the name used in --lora-modules)
+HALO_WORKER_MODEL=qwen_bc \
+python scripts/eval_subset.py --mode qwen_worker_bc --tasks v2.gomail-1 --max_steps 20
+```
 
 ---
 
@@ -253,7 +364,7 @@ python -m pytest tests/integration/test_run_one_debug_smoke.py -v
 
 | Type | Location |
 |------|----------|
-| Trajectories | `data/trajectories/<mode>/<run_id>.jsonl` |
+| Trajectories | `data/trajectories/<mode>/<run_id>/<task>__attempt_<attempt_idx>.jsonl` |
 | Results | `results/<run_id>/` |
 | Error logs | `results/<run_id>/errors.jsonl` |
 | Cache data | `data/cache/` |
@@ -303,7 +414,9 @@ source .venv/bin/activate
 | `scripts/eval_subset.py` | Complete | Subset evaluation runner |
 | `scripts/eval_full_matrix.py` | Complete | Full benchmark matrix |
 | `scripts/run_one_debug.py` | Complete | Single-task debug runner |
+| `scripts/rollout_sampler.py` | Complete | Rollout sampler for RL data collection |
+| `scripts/verify_exploration.py` | Complete | Exploration verification |
 
 ---
 
-Last updated: 2025-12-23
+Last updated: 2025-12-26

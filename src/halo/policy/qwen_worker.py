@@ -328,7 +328,8 @@ def create_qwen_worker_policy(
     mode: str = "zero",
     model_name: str = "Qwen/Qwen2.5-3B-Instruct",
     backend: str = "vllm",
-    base_url: str = "http://localhost:8000/v1"
+    base_url: str = "http://localhost:8000/v1",
+    temperature: float = 0.0,
 ) -> QwenWorkerPolicy:
     """Factory function for Qwen worker policy.
     
@@ -337,6 +338,7 @@ def create_qwen_worker_policy(
         model_name: HuggingFace model name
         backend: 'local' or 'vllm'
         base_url: API URL for vllm backend
+        temperature: Sampling temperature (0 for deterministic)
         
     Returns:
         Configured QwenWorkerPolicy
@@ -347,10 +349,13 @@ def create_qwen_worker_policy(
         adapter_path = "checkpoints/qwen_bc_lora"
     elif mode == "dpo":
         adapter_path = "checkpoints/qwen_dpo_lora"
+    elif mode == "grpo":
+        adapter_path = "checkpoints/qwen_grpo_lora"
     
     return QwenWorkerPolicy(
         model_name=model_name,
         backend=backend,
         base_url=base_url,
-        adapter_path=adapter_path
+        adapter_path=adapter_path,
+        temperature=temperature,
     )

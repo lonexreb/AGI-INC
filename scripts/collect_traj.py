@@ -19,7 +19,7 @@ DPO Pairing Rules:
 
 import argparse
 import json
-import hashlib
+import math
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from collections import defaultdict
@@ -416,6 +416,179 @@ def generate_dpo_dataset(
     return dpo_examples
 
 
+def _episode_task_id(ep_data: Dict[str, Any]) -> str:
+    episode_info = ep_data.get('episode') or {}
+    episode_start = ep_data.get('episode_start') or {}
+    steps = ep_data.get('steps', [])
+
+    task_id = episode_info.get('task_id', '')
+    if not task_id:
+        task_id = episode_start.get('task_id', '')
+    if not task_id and steps:
+        task_id = steps[0].get('task_id', '')
+    return task_id
+
+
+def _episode_max_progress_score(ep_data: Dict[str, Any]) -> float:
+    episode_info = ep_data.get('episode') or {}
+    max_progress = episode_info.get('max_progress_score', None)
+    if isinstance(max_progress, (int, float)):
+        return float(max_progress)
+
+    steps = ep_data.get('steps', [])
+    best = 0.0
+    for step in steps:
+        score = step.get('progress_score', 0.0)
+        if isinstance(score, (int, float)):
+            best = max(best, float(score))
+    return best
+
+
+def _episode_total_steps(ep_data: Dict[str, Any]) -> int:
+    episode_info = ep_data.get('episode') or {}
+    total = episode_info.get('total_steps', None)
+    if isinstance(total, int):
+        return int(total)
+    steps = ep_data.get('steps', [])
+    return int(len(steps))
+
+
+def _episode_recovery_action_count(ep_data: Dict[str, Any]) -> int:
+    steps = ep_data.get('steps', [])
+    count = 0
+    for step in steps:
+        src = step.get('action_source')
+        if isinstance(src, str) and src.startswith('recovery_'):
+            count += 1
+    return count
+
+
+def _rank_episodes_by_task(episodes: Dict[str, Dict]) -> Dict[str, List[Dict[str, Any]]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for ep_key, ep_data in episodes.items():
+        task_id = _episode_task_id(ep_data)
+        if not task_id:
+            continue
+        grouped[task_id].append(
+            {
+                'ep_key': ep_key,
+                'ep_data': ep_data,
+                'max_progress_score': _episode_max_progress_score(ep_data),
+                'total_steps': _episode_total_steps(ep_data),
+                'recovery_action_count': _episode_recovery_action_count(ep_data),
+            }
+        )
+
+    for task_id, items in grouped.items():
+        items.sort(
+            key=lambda x: (
+                -float(x['max_progress_score']),
+                int(x['total_steps']),
+                int(x['recovery_action_count']),
+                str(x['ep_key']),
+            )
+        )
+    return grouped
+
+
+def generate_bc_dataset_progress_ranked(
+    episodes: Dict[str, Dict],
+    top_percent: float = 0.2,
+) -> List[BCExample]:
+    if not (0.0 < float(top_percent) <= 1.0):
+        raise ValueError(f"top_percent must be in (0, 1], got {top_percent}")
+
+    ranked = _rank_episodes_by_task(episodes)
+    bc_examples: List[BCExample] = []
+
+    for task_id, items in ranked.items():
+        if not items:
+            continue
+
+        k = int(math.ceil(len(items) * float(top_percent)))
+        k = max(1, min(k, len(items)))
+        chosen_items = items[:k]
+        site_id = extract_site_id(task_id)
+
+        for item in chosen_items:
+            ep_data = item['ep_data']
+            steps = ep_data.get('steps', [])
+            for step in steps:
+                if step.get('last_action_error'):
+                    continue
+
+                action = step.get('action', '')
+                if not action:
+                    continue
+
+                prompt = build_prompt_from_step(step)
+
+                bc_examples.append(
+                    BCExample(
+                        prompt=prompt,
+                        action=action,
+                        task_id=task_id,
+                        site_id=site_id,
+                        step_idx=step.get('step_idx', 0),
+                        action_source=step.get('action_source', 'unknown'),
+                    )
+                )
+
+    return bc_examples
+
+
+def generate_dpo_dataset_progress_ranked(episodes: Dict[str, Dict]) -> List[DPOExample]:
+    ranked = _rank_episodes_by_task(episodes)
+    dpo_examples: List[DPOExample] = []
+    seen_pairs = set()
+
+    for task_id, items in ranked.items():
+        if len(items) < 2:
+            continue
+
+        best = items[0]['ep_data']
+        worst = items[-1]['ep_data']
+
+        best_steps = best.get('steps', [])
+        worst_steps = worst.get('steps', [])
+        if not best_steps or not worst_steps:
+            continue
+
+        site_id = extract_site_id(task_id)
+        min_len = min(len(best_steps), len(worst_steps))
+        for i in range(min_len):
+            best_step = best_steps[i]
+            worst_step = worst_steps[i]
+
+            chosen = best_step.get('action', '')
+            rejected = worst_step.get('action', '')
+            if not chosen or not rejected:
+                continue
+            if chosen == rejected:
+                continue
+
+            state_key = f"progress_ranked_{task_id}_{i}"
+            pair_key = f"{state_key}_{chosen}_{rejected}"
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+
+            prompt = build_prompt_from_step(best_step)
+
+            dpo_examples.append(
+                DPOExample(
+                    prompt=prompt,
+                    chosen=chosen,
+                    rejected=rejected,
+                    task_id=task_id,
+                    site_id=site_id,
+                    state_key=state_key,
+                )
+            )
+
+    return dpo_examples
+
+
 def save_bc_dataset(examples: List[BCExample], output_path: Path):
     """Save BC dataset to JSONL file."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -511,6 +684,19 @@ Examples:
         help="Output format: bc, dpo, or all (default: all)"
     )
     parser.add_argument(
+        "--pairing_strategy",
+        type=str,
+        choices=["default", "progress_ranked"],
+        default="default",
+        help="Pairing strategy for dataset generation (default: default)",
+    )
+    parser.add_argument(
+        "--top_percent",
+        type=float,
+        default=0.2,
+        help="Top percent episodes per task to keep for BC when pairing_strategy=progress_ranked (default: 0.2)",
+    )
+    parser.add_argument(
         "--include-failed",
         action="store_true",
         help="Include steps from failed episodes in BC dataset"
@@ -543,6 +729,7 @@ Examples:
     print(f"Input: {input_dir}")
     print(f"Output: {output_dir}")
     print(f"Format: {args.format}")
+    print(f"Pairing strategy: {args.pairing_strategy}")
     print()
     
     # Check input directory exists
@@ -573,13 +760,22 @@ Examples:
     dpo_examples = []
     
     if args.format in ['bc', 'all']:
-        bc_examples = generate_bc_dataset(
-            episodes, 
-            successful_only=not args.include_failed
-        )
+        if args.pairing_strategy == "progress_ranked":
+            bc_examples = generate_bc_dataset_progress_ranked(
+                episodes,
+                top_percent=float(args.top_percent),
+            )
+        else:
+            bc_examples = generate_bc_dataset(
+                episodes,
+                successful_only=not args.include_failed
+            )
     
     if args.format in ['dpo', 'all']:
-        dpo_examples = generate_dpo_dataset(episodes)
+        if args.pairing_strategy == "progress_ranked":
+            dpo_examples = generate_dpo_dataset_progress_ranked(episodes)
+        else:
+            dpo_examples = generate_dpo_dataset(episodes)
     
     # Print statistics
     print_stats(bc_examples, dpo_examples)

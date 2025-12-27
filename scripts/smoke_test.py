@@ -96,7 +96,16 @@ def main():
     try:
         from halo.sdk import HaloAgent, SUPPORTED_MODES
         
-        for mode in ['baseline_worker', 'hierarchy_mgr_gate', 'hierarchy_vac', 'hierarchy_vac_macros']:
+        for mode in [
+            'baseline_worker',
+            'hierarchy_mgr_gate',
+            'hierarchy_vac',
+            'hierarchy_vac_macros',
+            'qwen_worker_zero',
+            'qwen_worker_bc',
+            'qwen_worker_dpo',
+            'qwen_worker_grpo',
+        ]:
             agent = HaloAgent(mode=mode, max_steps=5)
             assert agent.mode == mode
             print(f"   ✓ Created agent with mode: {mode}")
@@ -128,7 +137,16 @@ def main():
         "timestamp": datetime.now().isoformat(),
         "smoke_test": "passed" if all_passed else "failed",
         "agisdk_version": version,
-        "supported_modes": ['baseline_worker', 'hierarchy_mgr_gate', 'hierarchy_vac', 'hierarchy_vac_macros'],
+        "supported_modes": [
+            'baseline_worker',
+            'hierarchy_mgr_gate',
+            'hierarchy_vac',
+            'hierarchy_vac_macros',
+            'qwen_worker_zero',
+            'qwen_worker_bc',
+            'qwen_worker_dpo',
+            'qwen_worker_grpo',
+        ],
         "constraints": {
             "task_version": "v2",
             "browser_dimensions": [1280, 720],

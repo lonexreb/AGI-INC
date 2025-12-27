@@ -21,6 +21,11 @@ SUPPORTED_MODES = [
     'hierarchy_mgr_gate',        # Worker + Manager (gated), no caches
     'hierarchy_vac',             # Worker + Manager + VAC
     'hierarchy_vac_macros',      # Worker + Manager + VAC + Macro cache (full HALO)
+    'expert_rollout',            # Trajectory collection (stronger worker)
+    'qwen_worker_zero',          # Qwen zero-shot worker
+    'qwen_worker_bc',            # Qwen + BC LoRA
+    'qwen_worker_dpo',           # Qwen + DPO LoRA
+    'qwen_worker_grpo',          # Qwen + GRPO LoRA
     # Legacy names
     'baseline', 'halo', 'halo_cache',
 ]
@@ -70,6 +75,7 @@ class HaloAgentArgs(AbstractAgentArgs):
     use_cache: Optional[bool] = None
     use_macros: Optional[bool] = None
     worker_model: str = "gpt-4o-mini"
+    worker_temperature: float = 0.0
     manager_model: str = "gpt-4o"
     max_steps: int = 70  # Default for score-mode; use 25 for speed-mode
 
@@ -81,6 +87,7 @@ class HaloAgentArgs(AbstractAgentArgs):
 
     # Trajectory logging
     run_id: Optional[str] = None
+    task_seed: Optional[int] = None
     log_trajectories: bool = True
     traj_output_dir: str = "data/trajectories"
 
@@ -100,6 +107,9 @@ class HaloAgentArgs(AbstractAgentArgs):
                 output_dir=output_dir,
                 mode=self.mode
             )
+            traj_logger.run_metadata = {
+                "task_seed": int(self.task_seed) if self.task_seed is not None else None,
+            }
 
         agent = HaloAgent(
             mode=self.mode,
@@ -107,6 +117,7 @@ class HaloAgentArgs(AbstractAgentArgs):
             use_cache=self.use_cache,
             use_macros=self.use_macros,
             worker_model=self.worker_model,
+            worker_temperature=self.worker_temperature,
             manager_model=self.manager_model,
             max_steps=self.max_steps,
             manager_warm_start=self.manager_warm_start,
@@ -223,9 +234,11 @@ def run_single_task(
     mode: str = "hierarchy_vac_macros",
     headless: bool = True,
     max_steps: int = 70,
+    task_seed: Optional[int] = None,
     run_id: Optional[str] = None,
     results_dir: Optional[str] = None,
     worker_model: Optional[str] = None,
+    worker_temperature: float = 0.0,
     manager_model: Optional[str] = None,
     use_manager: Optional[bool] = None,
     use_cache: Optional[bool] = None,
@@ -265,7 +278,9 @@ def run_single_task(
         mode=mode,
         max_steps=max_steps,
         run_id=run_id,
+        task_seed=task_seed,
         worker_model=worker_model or "gpt-4o-mini",
+        worker_temperature=float(worker_temperature),
         manager_model=manager_model or "gpt-4o",
         use_manager=use_manager,
         use_cache=use_cache,
@@ -287,6 +302,9 @@ def run_single_task(
         results_dir=results_dir,
         **kwargs
     )
+
+    if task_seed is not None:
+        harness.env_args["task_seed"] = int(task_seed)
 
     results = harness.run()
     record = unwrap_single_task_result(results, task_name)

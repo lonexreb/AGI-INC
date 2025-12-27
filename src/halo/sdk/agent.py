@@ -116,6 +116,7 @@ class HaloAgent(Agent):
         'qwen_worker_zero': (True, True, True),
         'qwen_worker_bc': (True, True, True),
         'qwen_worker_dpo': (True, True, True),
+        'qwen_worker_grpo': (True, True, True),
         # Legacy mode names for compatibility
         'baseline': (False, False, False),
         'halo': (True, False, False),
@@ -134,6 +135,7 @@ class HaloAgent(Agent):
         use_macros: Optional[bool] = None,
         use_manager: Optional[bool] = None,
         worker_model: str = "gpt-4o-mini",
+        worker_temperature: float = 0.0,
         manager_model: str = "gpt-4o",
         max_steps: int = 70,
         manager_warm_start: Optional[bool] = None,
@@ -190,6 +192,7 @@ class HaloAgent(Agent):
             worker_model=worker_model,
             manager_model=manager_model,
             max_steps=max_steps,
+            worker_temperature=float(worker_temperature),
             manager_warm_start=resolved_manager_warm_start,
             enable_recovery_policies=resolved_enable_recovery_policies,
             always_call_manager=resolved_always_call_manager,
@@ -203,6 +206,24 @@ class HaloAgent(Agent):
         self.max_steps = max_steps
         self.invalid_action_count = 0
         self.total_action_count = 0
+
+        if traj_logger is not None:
+            existing_metadata = dict(getattr(traj_logger, "run_metadata", {}) or {})
+            existing_metadata.update({
+                "worker_model": worker_model,
+                "worker_temperature": float(worker_temperature),
+                "manager_model": manager_model,
+                "use_manager": bool(resolved_use_manager),
+                "use_cache": bool(resolved_use_cache),
+                "use_macros": bool(resolved_use_macros),
+                "max_steps": int(max_steps),
+                "manager_warm_start": bool(resolved_manager_warm_start),
+                "enable_recovery_policies": bool(resolved_enable_recovery_policies),
+                "always_call_manager": bool(resolved_always_call_manager),
+                "qwen_backend": config.qwen_backend,
+                "qwen_base_url": config.qwen_base_url,
+            })
+            traj_logger.run_metadata = existing_metadata
 
     def reset(self, goal: str = ""):
         """Reset agent for new episode."""

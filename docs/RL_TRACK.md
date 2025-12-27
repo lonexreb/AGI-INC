@@ -15,7 +15,7 @@ The Manager policy remains OpenAI-based (gpt-4o) for stability and strategic pla
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      HALO Agent                              │
+│                      HALO Agent                             │
 ├─────────────────────────────────────────────────────────────┤
 │  Worker Policy (Qwen)          │  Manager Policy (OpenAI)   │
 │  - Zero-shot                   │  - gpt-4o                  │
@@ -28,17 +28,36 @@ The Manager policy remains OpenAI-based (gpt-4o) for stability and strategic pla
 
 ## Step 1: Collect Rollouts
 
-First, run evaluations to collect trajectories:
+First, use `rollout_sampler.py` to collect **multiple rollouts per task** with explicit `task_seed` control and exploration (`--temperature`).
 
 ```bash
-# Run evaluation with OpenAI worker to collect trajectories
-python scripts/eval_subset.py \
-    --mode hierarchy_vac_macros \
+# Example: 3 rollouts per task on a configured subset
+python scripts/rollout_sampler.py \
+    --config configs/experiments.yaml \
+    --experiment hierarchy_vac_macros \
+    --subset shopping \
     --sample_size 50 \
+    --rollouts_per_task 3 \
     --seed 42 \
-    --debug
+    --task_seed 123 \
+    --temperature 0.7
+```
 
-# Trajectories are saved to data/trajectories/<mode>/<run_id>.jsonl
+Trajectories are saved one JSONL file per episode:
+- `data/trajectories/<mode>/<run_id>/<task>__attempt_<attempt_idx>.jsonl`
+
+Each episode starts with an `episode_start` record that includes provenance like `task_seed` and `worker_temperature`.
+
+Optional sanity check: verify changing `worker_temperature` changes the action sequence (same seed):
+
+```bash
+python scripts/verify_exploration.py \
+    --task v2.gomail-1 \
+    --mode baseline_worker \
+    --task_seed 123 \
+    --temperature_a 0.0 \
+    --temperature_b 0.7 \
+    --compare_steps 10
 ```
 
 ## Step 2: Export Datasets
@@ -49,23 +68,32 @@ Convert trajectories to training datasets:
 # Export BC and DPO datasets
 python scripts/collect_traj.py \
     --input_dir data/trajectories \
-    --output_dir data/datasets
+    --output_dir data/datasets \
+    --format all
+
+# Export with progress-ranked pairing (ranks episodes per task by progress metrics)
+python scripts/collect_traj.py \
+    --input_dir data/trajectories \
+    --output_dir data/datasets \
+    --format all \
+    --pairing_strategy progress_ranked \
+    --top_percent 0.2
 
 # This creates:
-# - data/datasets/bc.jsonl     (prompt, action pairs)
-# - data/datasets/dpo.jsonl    (prompt, chosen, rejected triples)
+# - data/datasets/bc.jsonl
+# - data/datasets/dpo.jsonl
 ```
 
 ### Dataset Formats
 
 **BC Dataset (bc.jsonl)**:
 ```json
-{"prompt": "<observation summary>", "action": "click(\"123\")", "task_id": "v2.omnizon-13", "step": 5}
+{"prompt": "<observation summary>", "action": "click(\"123\")", "task_id": "v2.omnizon-13", "site_id": "omnizon", "step_idx": 5, "action_source": "worker"}
 ```
 
 **DPO Dataset (dpo.jsonl)**:
 ```json
-{"prompt": "<observation summary>", "chosen": "click(\"123\")", "rejected": "click(\"456\")", "task_id": "v2.omnizon-13", "step": 5}
+{"prompt": "<observation summary>", "chosen": "click(\"123\")", "rejected": "click(\"456\")", "task_id": "v2.omnizon-13", "site_id": "omnizon", "state_key": "progress_ranked_v2.omnizon-13_5"}
 ```
 
 ## Step 3: Train BC Model
@@ -125,16 +153,14 @@ For fast inference, serve the model using vLLM:
 pip install vllm
 
 # Serve base model (zero-shot)
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen2.5-3B-Instruct \
-    --port 8000
+vllm serve Qwen/Qwen2.5-3B-Instruct --host 0.0.0.0 --port 8000
 
-# Serve with LoRA adapter (BC or DPO)
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen2.5-3B-Instruct \
+# Serve with LoRA adapters (BC and/or DPO)
+vllm serve Qwen/Qwen2.5-3B-Instruct \
+    --host 0.0.0.0 \
+    --port 8000 \
     --enable-lora \
-    --lora-modules qwen_bc=checkpoints/qwen_bc_lora \
-    --port 8000
+    --lora-modules qwen_bc=checkpoints/qwen_bc_lora qwen_dpo=checkpoints/qwen_dpo_lora
 ```
 
 ## Step 6: Run Evaluation with Qwen
@@ -143,9 +169,11 @@ python -m vllm.entrypoints.openai.api_server \
 
 Set the worker backend in your environment or code:
 
+- For base model inference, set `HALO_WORKER_MODEL` to the base model ID (e.g., `Qwen/Qwen2.5-3B-Instruct`)
+- For vLLM+LoRA, set `HALO_WORKER_MODEL` to the adapter name you passed to `--lora-modules` (e.g., `qwen_bc` / `qwen_dpo`)
+
 ```bash
 export HALO_WORKER_BACKEND=vllm
-export HALO_WORKER_MODEL=Qwen/Qwen2.5-3B-Instruct
 export HALO_VLLM_URL=http://localhost:8000/v1
 ```
 
@@ -153,18 +181,21 @@ export HALO_VLLM_URL=http://localhost:8000/v1
 
 ```bash
 # Zero-shot Qwen
+HALO_WORKER_MODEL=Qwen/Qwen2.5-3B-Instruct \
 python scripts/eval_subset.py \
     --mode qwen_worker_zero \
     --sample_size 30 \
     --seed 42
 
 # BC finetuned Qwen
+HALO_WORKER_MODEL=qwen_bc \
 python scripts/eval_subset.py \
     --mode qwen_worker_bc \
     --sample_size 30 \
     --seed 42
 
 # DPO finetuned Qwen
+HALO_WORKER_MODEL=qwen_dpo \
 python scripts/eval_subset.py \
     --mode qwen_worker_dpo \
     --sample_size 30 \
@@ -217,8 +248,7 @@ python scripts/train_bc_unsloth.py --batch_size 1 --gradient_accumulation_steps 
 curl http://localhost:8000/v1/models
 
 # Restart with more memory
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen2.5-3B-Instruct \
+vllm serve Qwen/Qwen2.5-3B-Instruct \
     --gpu-memory-utilization 0.9
 ```
 
@@ -262,7 +292,8 @@ HALO-Agent/
 │   ├── qwen_bc_lora/       # BC adapter
 │   └── qwen_dpo_lora/      # DPO adapter
 └── data/
-    ├── trajectories/       # Raw rollouts
+    ├── trajectories/       # Raw rollouts (one file per episode)
+    │   └── <mode>/<run_id>/<task>__attempt_<attempt_idx>.jsonl
     └── datasets/           # Training data
         ├── bc.jsonl
         └── dpo.jsonl
@@ -270,4 +301,4 @@ HALO-Agent/
 
 ---
 
-Last updated: 2025-12-23
+Last updated: 2025-12-26

@@ -25,6 +25,7 @@ from ..policy import (
 from ..cache import VerifiedActionCache, MacroReplayCache
 from ..verify import ActionVerifier, LoopDetector
 from ..logging import TrajectoryLogger
+from ..rl.progress import score_progress
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class OrchestratorConfig:
     worker_model: str = "gpt-4o-mini"
     manager_model: str = "gpt-4o"
     max_steps: int = 70
+    worker_temperature: float = 0.0
     # Manager warm start: call manager at step 0 and 1
     manager_warm_start: bool = True
     # Recovery policies
@@ -67,7 +69,13 @@ class Orchestrator:
             default_model_name = os.environ.get("HALO_WORKER_MODEL") or "Qwen/Qwen2.5-3B-Instruct"
             requested = self.config.worker_model
 
-            if qwen_mode in {"bc", "dpo"}:
+            adapter_defaults = {
+                "bc": "checkpoints/qwen_bc_lora",
+                "dpo": "checkpoints/qwen_dpo_lora",
+                "grpo": "checkpoints/qwen_grpo_lora",
+            }
+
+            if qwen_mode in adapter_defaults:
                 adapter_path = None
                 model_name = default_model_name
                 if requested and (
@@ -79,15 +87,14 @@ class Orchestrator:
                     adapter_path = requested
                 else:
                     model_name = requested or default_model_name
-                    adapter_path = (
-                        "checkpoints/qwen_bc_lora" if qwen_mode == "bc" else "checkpoints/qwen_dpo_lora"
-                    )
+                    adapter_path = adapter_defaults[qwen_mode]
 
                 self.worker = QwenWorkerPolicy(
                     model_name=model_name,
                     backend=qwen_backend,
                     base_url=qwen_base_url,
                     adapter_path=adapter_path,
+                    temperature=self.config.worker_temperature,
                 )
             else:
                 self.worker = create_qwen_worker_policy(
@@ -95,13 +102,14 @@ class Orchestrator:
                     model_name=requested or default_model_name,
                     backend=qwen_backend,
                     base_url=qwen_base_url,
+                    temperature=self.config.worker_temperature,
                 )
 
             logger.info(
                 f"Using Qwen worker policy (mode: {qwen_mode}, backend: {qwen_backend}, model: {self.worker.model_name})"
             )
         else:
-            self.worker = WorkerPolicy(model=self.config.worker_model)
+            self.worker = WorkerPolicy(model=self.config.worker_model, temperature=self.config.worker_temperature)
 
         if self.config.use_manager:
             self.manager = ManagerPolicy(model=self.config.manager_model)
@@ -188,6 +196,13 @@ class Orchestrator:
         state_key_str = state_key.to_string()
         page_type = classify_page_type(obs.get('url', ''), obs.get('title', ''))
         obs_hash = get_obs_hash(obs)
+
+        progress_info = score_progress(
+            obs,
+            goal=self.goal,
+            site_id=state_key.site_id,
+            page_type=page_type,
+        )
 
         # Update loop detector
         self.loop_detector.add_state(state_key_str, self.action_history[-1] if self.action_history else "")
@@ -402,6 +417,8 @@ class Orchestrator:
                 obs_summary=obs_summary,
                 actionable_elements=elements,
                 valid_bids=sorted(valid_bids),
+                progress_score=progress_info.progress_score,
+                milestones=progress_info.milestones,
             )
 
         # Build info
@@ -413,6 +430,9 @@ class Orchestrator:
             "page_type": page_type,
             "loop_detected": loop_detected
         }
+
+        info["progress_score"] = progress_info.progress_score
+        info["milestones"] = progress_info.milestones
 
         return action, info
 

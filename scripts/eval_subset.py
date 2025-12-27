@@ -53,6 +53,7 @@ SUPPORTED_MODES = [
     'qwen_worker_zero',
     'qwen_worker_bc',
     'qwen_worker_dpo',
+    'qwen_worker_grpo',
 ]
 
 
