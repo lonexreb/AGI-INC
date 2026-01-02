@@ -1,0 +1,46 @@
+# HALO-Agent: Online RL with Qwen3-VL
+# Everything runs on TensorDock (Ubuntu 22.04 + H100/A100)
+
+# =============================================================================
+# CORE: Install these first
+# =============================================================================
+
+# PyTorch with CUDA (install separately):
+# pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# vLLM for fast VLM inference (REQUIRED >= 0.11.0 for Qwen3-VL)
+vllm>=0.11.0
+
+# Qwen3-VL utilities for image processing
+qwen-vl-utils==0.0.14
+
+# =============================================================================
+# ENVIRONMENT: Browser + REAL Benchmark
+# =============================================================================
+agisdk==0.3.5
+playwright>=1.40.0
+openai>=1.0.0          # vLLM client (OpenAI-compatible API)
+python-dotenv>=1.0.0
+numpy>=1.24.0
+httpx>=0.25.0          # Async HTTP calls
+Pillow>=10.0.0         # Image processing
+
+# =============================================================================
+# TRAINING: RL + Model Updates
+# =============================================================================
+transformers>=4.57.0   # Required for Qwen3-VL
+accelerate>=0.25.0
+peft>=0.7.0            # LoRA adapters
+bitsandbytes>=0.41.0   # Quantization (optional)
+
+# =============================================================================
+# UTILITIES
+# =============================================================================
+tqdm>=4.66.0
+pyyaml>=6.0.0
+tensorboard>=2.15.0    # Training metrics
+
+# =============================================================================
+# OPTIONAL: For faster video loading in qwen-vl-utils
+# pip install qwen-vl-utils[decord]
+# =============================================================================

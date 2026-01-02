@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 from urllib.parse import urlparse, parse_qs
 from dataclasses import dataclass
 
-from .obs_summarizer import extract_actionable_nodes
+from .probe import extract_signals, AXSignals
 
 
 @dataclass(frozen=True)
@@ -96,28 +96,22 @@ def extract_site_id(url: str) -> str:
     return host.split('.')[0] if host else 'unknown'
 
 
-def build_elements_signature(axtree_object: Any, top_k: int = 10) -> str:
-    """Build signature from top actionable elements."""
-    nodes = extract_actionable_nodes(axtree_object, top_k=top_k)
-
-    # Create signature from roles and partial names
-    parts = []
-    for n in nodes:
-        name_hash = hashlib.md5(n['name'].encode()).hexdigest()[:4] if n['name'] else ''
-        parts.append(f"{n['role']}:{name_hash}")
-
-    return '|'.join(parts)
+def build_elements_signature(ax_signals: AXSignals) -> str:
+    """Build signature from AX signals."""
+    return f"{ax_signals.role_name_digest}:{ax_signals.visible_text_digest}"
 
 
 def build_state_key(
     obs: Dict,
-    task_info: Optional[Dict] = None
+    task_info: Optional[Dict] = None,
+    ax_signals: Optional[AXSignals] = None
 ) -> StateKey:
     """Build StateKey from observation.
 
     Args:
         obs: Observation dictionary
         task_info: Optional task metadata (site_id, task_type)
+        ax_signals: Optional pre-computed AXSignals
 
     Returns:
         StateKey instance
@@ -139,8 +133,9 @@ def build_state_key(
     url_normalized = normalize_url(url)
 
     # Build elements signature
-    axtree = obs.get('axtree_object')
-    elements_sig = build_elements_signature(axtree) if axtree else ''
+    if ax_signals is None:
+        ax_signals = extract_signals(obs)
+    elements_sig = build_elements_signature(ax_signals)
 
     # Check for error
     has_error = bool(obs.get('last_action_error', ''))

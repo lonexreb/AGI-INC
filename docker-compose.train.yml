@@ -1,0 +1,123 @@
+# docker-compose.train.yml
+# GPU training orchestration for HALO RL pipeline
+#
+# Usage:
+#   docker-compose -f docker-compose.train.yml up -d vllm
+#   docker-compose -f docker-compose.train.yml run --rm train bash
+#
+# Prerequisites:
+#   - NVIDIA Container Toolkit installed
+#   - Models downloaded to /opt/halo/models
+#   - Create directories: sudo mkdir -p /opt/halo/{models,lora,data}
+
+version: "3.8"
+
+services:
+  # vLLM inference server (for rollout collection)
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: halo-vllm
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8000:8000"
+    volumes:
+      - /opt/halo/models:/models:ro
+      - /opt/halo/lora:/lora:ro
+    command: >
+      python3 -m vllm.entrypoints.openai.api_server
+        --model /models/Qwen3-4B-Instruct-2507
+        --served-model-name Qwen3-4B-Instruct-2507
+        --host 0.0.0.0
+        --port 8000
+        --trust-remote-code
+        --dtype auto
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # vLLM with LoRA adapter enabled (for post-training evaluation)
+  vllm-lora:
+    image: vllm/vllm-openai:latest
+    container_name: halo-vllm-lora
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8001:8000"
+    volumes:
+      - /opt/halo/models:/models:ro
+      - /opt/halo/lora:/lora:ro
+    command: >
+      python3 -m vllm.entrypoints.openai.api_server
+        --model /models/Qwen3-4B-Instruct-2507
+        --served-model-name Qwen3-4B-Instruct-2507
+        --host 0.0.0.0
+        --port 8000
+        --trust-remote-code
+        --dtype auto
+        --enable-lora
+        --lora-modules qwen_grpo=/lora/qwen3_4b_grpo_lora
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    profiles:
+      - lora
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/models"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # Training container
+  train:
+    build:
+      context: .
+      dockerfile: Dockerfile.train
+    container_name: halo-train
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HALO_WORKER_BACKEND=vllm
+      - HALO_VLLM_URL=http://vllm:8000/v1
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+    volumes:
+      - .:/workspace
+      - /opt/halo/models:/models
+      - /opt/halo/lora:/lora
+      # Map persistent data to workspace paths so scripts work unchanged
+      - /opt/halo/data/trajectories:/workspace/data/trajectories
+      - /opt/halo/data/datasets:/workspace/data/datasets
+    working_dir: /workspace
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    depends_on:
+      - vllm
+    stdin_open: true
+    tty: true
+
+networks:
+  default:
+    name: halo-network

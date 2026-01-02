@@ -40,9 +40,34 @@ def check_api_key():
         sys.exit(1)
 
 
+def load_experiments_config(config_path: str) -> Dict[str, Any]:
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f) if config_path.endswith(".json") else __import__("yaml").safe_load(f) or {}
+
+
+def get_experiment_from_config(config: Dict[str, Any], experiment_name: str) -> Dict[str, Any]:
+    defaults = config.get("defaults", {})
+    experiments = config.get("experiments", [])
+    for exp in experiments:
+        if isinstance(exp, dict) and exp.get("name") == experiment_name:
+            return {**defaults, **exp}
+    available = [e.get("name") for e in experiments if isinstance(e, dict) and e.get("name")]
+    raise ValueError(f"Unknown experiment '{experiment_name}'. Available: {sorted(available)}")
+
+
+def should_require_openai_key(modes: List[str], exp_cfg: Optional[Dict[str, Any]]) -> bool:
+    if os.environ.get("OPENAI_API_KEY"):
+        return False
+    if exp_cfg is None:
+        return True
+    if exp_cfg.get("use_manager") is not False:
+        return True
+    return not all(str(m).startswith("qwen_worker") for m in (modes or []))
+
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from list_v2_tasks import get_v2_tasks, discover_v2_tasks
+from halo.sdk.task_registry import load_real_task_names
 
 SUPPORTED_MODES = [
     'baseline_worker',
@@ -345,9 +370,6 @@ def generate_readme(
 
 
 def main():
-    # Check API key before doing anything
-    check_api_key()
-    
     parser = argparse.ArgumentParser(
         description="Run HALO-Agent evaluation on task subset",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -367,6 +389,18 @@ Examples:
 """
     )
     parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Experiments config YAML (default: none)",
+    )
+    parser.add_argument(
+        "--experiment",
+        type=str,
+        default=None,
+        help="Experiment name from experiments.yaml (sets agent overrides)",
+    )
+    parser.add_argument(
         "--tasks",
         type=str,
         default=None,
@@ -383,6 +417,15 @@ Examples:
         type=str,
         default="v2",
         help="Task version (default: v2). WARNING: SDK defaults to v1 if omitted!"
+    )
+    parser.add_argument(
+        "--task_registry",
+        type=str,
+        default=None,
+        help=(
+            "Path to REAL task registry snapshot JSON. If omitted, uses configs/real_<task_version>_task_registry.json "
+            "when present, otherwise falls back to dynamic discovery."
+        ),
     )
     parser.add_argument(
         "--mode",
@@ -434,6 +477,15 @@ Examples:
     )
     
     args = parser.parse_args()
+
+    config: Optional[Dict[str, Any]] = None
+    exp_cfg: Optional[Dict[str, Any]] = None
+    if args.config and args.experiment:
+        config = load_experiments_config(args.config)
+        exp_cfg = get_experiment_from_config(config, args.experiment)
+
+    if should_require_openai_key(args.mode, exp_cfg):
+        check_api_key()
     
     if args.task_version != "v2":
         print(f"WARNING: task_version={args.task_version} specified. SDK defaults to v1 if omitted!")
@@ -449,7 +501,7 @@ Examples:
     if args.tasks:
         tasks = [t.strip() for t in args.tasks.split(',')]
     else:
-        all_tasks, source = discover_v2_tasks()
+        all_tasks, source = load_real_task_names(task_version="v2", task_registry=args.task_registry)
         if not all_tasks:
             print("ERROR: No v2 tasks discovered!")
             sys.exit(1)
@@ -504,6 +556,29 @@ Examples:
     
     for mode in args.mode:
         try:
+            agent_overrides = None
+            run_name = None
+            if exp_cfg is not None:
+                run_name = exp_cfg.get("name") or mode
+                agent_overrides = {
+                    k: exp_cfg[k]
+                    for k in [
+                        "worker_model",
+                        "manager_model",
+                        "use_manager",
+                        "use_cache",
+                        "use_macros",
+                        "manager_warm_start",
+                        "enable_recovery_policies",
+                        "always_call_manager",
+                        "qwen_backend",
+                        "qwen_base_url",
+                    ]
+                    if k in exp_cfg
+                }
+                if mode.startswith("qwen_worker") and exp_cfg.get("use_manager") is False:
+                    agent_overrides["traj_group"] = str(exp_cfg.get("name") or args.experiment)
+
             results = run_mode(
                 mode=mode,
                 tasks=tasks,
@@ -511,6 +586,8 @@ Examples:
                 headless=headless,
                 max_steps=args.max_steps,
                 results_dir=str(results_dir),
+                run_name=run_name,
+                agent_overrides=agent_overrides,
                 debug=args.debug
             )
             

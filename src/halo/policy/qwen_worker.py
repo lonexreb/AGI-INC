@@ -183,13 +183,7 @@ class QwenWorkerPolicy:
             
         except Exception as e:
             logger.error(f"Qwen worker error: {e}")
-            return {
-                "action": "noop()",
-                "rationale": f"Error: {e}",
-                "confidence": 0.0,
-                "raw_response": "",
-                "was_repaired": True
-            }
+            raise e
 
     def _build_prompt(
         self,

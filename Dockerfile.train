@@ -1,0 +1,51 @@
+# Dockerfile.train
+# GPU training image for HALO RL pipeline (GRPO / LoRA fine-tuning)
+#
+# Build:
+#   docker build -f Dockerfile.train -t halo-train:latest .
+#
+# Run (interactive):
+#   docker run --gpus all -it --rm \
+#     -v $(pwd):/workspace \
+#     -v /opt/halo/models:/models \
+#     -v /opt/halo/lora:/lora \
+#     halo-train:latest bash
+
+FROM nvcr.io/nvidia/pytorch:24.01-py3
+
+LABEL maintainer="AGI-INC"
+LABEL description="HALO RL training image with Unsloth, TRL, PEFT"
+
+# Avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /workspace
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for layer caching
+COPY requirements-rl.txt /tmp/requirements-rl.txt
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /tmp/requirements-rl.txt
+
+# Install unsloth from git for latest features (optional, uncomment if needed)
+# RUN pip install --no-cache-dir "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+
+# Copy project source
+COPY pyproject.toml /workspace/
+COPY src/ /workspace/src/
+COPY scripts/ /workspace/scripts/
+COPY configs/ /workspace/configs/
+
+# Install halo-agent package in editable mode
+RUN pip install --no-cache-dir -e .
+
+# Default command
+CMD ["bash"]

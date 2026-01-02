@@ -58,9 +58,28 @@ Optional variables (for Qwen + vLLM):
 
 ## Task Discovery
 
-### List Available v2 Tasks
+### Task Registry Snapshot (Recommended)
 
-Use `list_v2_tasks.py` to discover all available v2 tasks:
+For reproducible evaluations/rollouts across machines and SDK updates, snapshot the REAL task registry to a JSON file and commit it.
+
+```bash
+# Generate/update the snapshot
+python scripts/snapshot_real_tasks.py --task_version v2 --out configs/real_v2_task_registry.json
+```
+
+The evaluation/rollout scripts accept `--task_registry` to pin task discovery to a specific snapshot:
+
+```bash
+python scripts/eval_subset.py --task_registry configs/real_v2_task_registry.json --mode baseline_worker
+python scripts/eval_full_matrix.py --task_registry configs/real_v2_task_registry.json
+python scripts/rollout_sampler.py --task_registry configs/real_v2_task_registry.json --subset shopping
+```
+
+If `configs/real_v2_task_registry.json` exists, these scripts will automatically use it even if `--task_registry` is omitted.
+
+### List Available v2 Tasks (Ad-hoc)
+
+Use `list_v2_tasks.py` to list tasks directly from the installed SDK / vendored `third_party/agisdk`:
 
 ```bash
 # List all v2 tasks with summary
@@ -124,6 +143,7 @@ python scripts/eval_subset.py --mode baseline_worker --dry-run
 | `--tasks` | (sample 50) | Comma-separated task IDs |
 | `--task_type` | None | Filter by site (e.g., omnizon) |
 | `--task_version` | v2 | Task version (WARNING: SDK defaults to v1!) |
+| `--task_registry` | None | Path to task registry snapshot JSON (recommended for reproducibility) |
 | `--mode` | baseline_worker | Agent mode(s) to run |
 | `--max_steps` | 70 | Max steps per task |
 | `--headless` | true | Run headless browser |
@@ -167,6 +187,7 @@ python scripts/rollout_sampler.py \
     --config configs/experiments.yaml \
     --experiment hierarchy_vac_macros \
     --subset shopping \
+    --task_registry configs/real_v2_task_registry.json \
     --sample_size 50 \
     --rollouts_per_task 3 \
     --seed 42 \
@@ -378,8 +399,10 @@ python -m pytest tests/integration/test_run_one_debug_smoke.py -v
 **Cause:** Usually invalid task IDs (tasks that don't exist in v2)
 
 **Solution:**
-1. Run `python scripts/list_v2_tasks.py` to see valid tasks
+1. Ensure you are using a stable task registry snapshot (recommended):
+   - `python scripts/snapshot_real_tasks.py --out configs/real_v2_task_registry.json`
 2. Use `--tasks` with valid v2 task IDs
+3. (Optional) Use `python scripts/list_v2_tasks.py` to inspect available tasks
 3. Check `results/<run_id>/errors.jsonl` for details
 
 ### "No module named 'agisdk'"

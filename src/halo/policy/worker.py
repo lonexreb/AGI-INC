@@ -166,13 +166,7 @@ Output JSON: {{"action": "click(\"a1b2\")", "rationale": "clicking search button
 
         except Exception as e:
             logger.error(f"Worker policy error: {e}")
-            return {
-                "action": "noop()",
-                "rationale": f"Error: {e}",
-                "confidence": 0.0,
-                "raw_response": "",
-                "was_repaired": True
-            }
+            raise e
 
     def _extract_bid_from_action(self, action: str) -> Optional[str]:
         """Extract element ID from action string."""

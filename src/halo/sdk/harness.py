@@ -15,19 +15,12 @@ from .agent import HaloAgent
 from ..logging import TrajectoryLogger
 
 
-# Supported modes for evaluation
+# Supported modes for evaluation (Qwen3-VL based Online RL)
 SUPPORTED_MODES = [
-    'baseline_worker',           # Worker only, no manager, no caches
-    'hierarchy_mgr_gate',        # Worker + Manager (gated), no caches
-    'hierarchy_vac',             # Worker + Manager + VAC
-    'hierarchy_vac_macros',      # Worker + Manager + VAC + Macro cache (full HALO)
-    'expert_rollout',            # Trajectory collection (stronger worker)
-    'qwen_worker_zero',          # Qwen zero-shot worker
-    'qwen_worker_bc',            # Qwen + BC LoRA
-    'qwen_worker_dpo',           # Qwen + DPO LoRA
-    'qwen_worker_grpo',          # Qwen + GRPO LoRA
-    # Legacy names
-    'baseline', 'halo', 'halo_cache',
+    'gpt4o_baseline',    # GPT-4o for comparison / MCTS critic
+    'qwen3vl_base',      # Qwen3-VL-8B base (before training)
+    'qwen3vl_grpo',      # Qwen3-VL + Online GRPO LoRA
+    'qwen3vl_mcts',      # Qwen3-VL + MCTS-trained LoRA (Agent Q style)
 ]
 
 
@@ -55,33 +48,25 @@ def derive_task_id(task_name: str) -> str:
 class HaloAgentArgs(AbstractAgentArgs):
     """Arguments for the HALO Agent.
 
-    This class configures the HALO agent instance and provides
-    the factory method for creating agent instances.
-    
+    Simplified for Online RL - just policy -> action -> reward.
+    Uses Qwen3-VL-8B Vision-Language Model for GUI control.
+
     Supported modes:
-    - baseline_worker: Worker only, no manager, no caches
-    - hierarchy_mgr_gate: Worker + Manager (gated), no caches
-    - hierarchy_vac: Worker + Manager + VAC
-    - hierarchy_vac_macros: Worker + Manager + VAC + Macro cache (full HALO)
+    - gpt4o_baseline: GPT-4o for comparison / MCTS critic
+    - qwen3vl_base: Qwen3-VL-8B base (before training)
+    - qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
+    - qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
     """
 
     agent_name: str = "HaloAgent"
 
-    # HALO-specific configuration
-    mode: str = "hierarchy_vac_macros"
-    use_macro_cache: bool = True
-    use_action_cache: bool = True
-    use_manager: Optional[bool] = None
-    use_cache: Optional[bool] = None
-    use_macros: Optional[bool] = None
-    worker_model: str = "gpt-4o-mini"
+    # Agent configuration
+    mode: str = "qwen3vl_base"
+    worker_model: str = "Qwen/Qwen3-VL-8B-Instruct"
     worker_temperature: float = 0.0
-    manager_model: str = "gpt-4o"
     max_steps: int = 70  # Default for score-mode; use 25 for speed-mode
 
-    manager_warm_start: Optional[bool] = None
     enable_recovery_policies: Optional[bool] = None
-    always_call_manager: Optional[bool] = None
     qwen_backend: Optional[str] = None
     qwen_base_url: Optional[str] = None
 
@@ -90,6 +75,7 @@ class HaloAgentArgs(AbstractAgentArgs):
     task_seed: Optional[int] = None
     log_trajectories: bool = True
     traj_output_dir: str = "data/trajectories"
+    traj_group: Optional[str] = None
 
     def make_agent(self) -> HaloAgent:
         """Create and return an instance of HaloAgent.
@@ -100,8 +86,8 @@ class HaloAgentArgs(AbstractAgentArgs):
         # Create trajectory logger if enabled
         traj_logger = None
         if self.log_trajectories and self.run_id:
-            # Include mode in output directory for organization
-            output_dir = f"{self.traj_output_dir}/{self.mode}"
+            output_group = self.traj_group or self.mode
+            output_dir = f"{self.traj_output_dir}/{output_group}"
             traj_logger = TrajectoryLogger(
                 run_id=self.run_id,
                 output_dir=output_dir,
@@ -113,16 +99,10 @@ class HaloAgentArgs(AbstractAgentArgs):
 
         agent = HaloAgent(
             mode=self.mode,
-            use_manager=self.use_manager,
-            use_cache=self.use_cache,
-            use_macros=self.use_macros,
             worker_model=self.worker_model,
             worker_temperature=self.worker_temperature,
-            manager_model=self.manager_model,
             max_steps=self.max_steps,
-            manager_warm_start=self.manager_warm_start,
             enable_recovery_policies=self.enable_recovery_policies,
-            always_call_manager=self.always_call_manager,
             qwen_backend=self.qwen_backend,
             qwen_base_url=self.qwen_base_url,
             traj_logger=traj_logger
@@ -153,7 +133,7 @@ def create_harness(
     results_dir: Optional[str] = None,
     leaderboard: bool = False,
     run_id: Optional[str] = None,
-    mode: str = "hierarchy_vac_macros",
+    mode: str = "qwen3vl_base",
     **kwargs
 ) -> Any:
     """Create a REAL harness configured for HALO Agent.
@@ -231,7 +211,7 @@ def create_harness(
 
 def run_single_task(
     task_name: str = "v2.omnizon-1",
-    mode: str = "hierarchy_vac_macros",
+    mode: str = "qwen3vl_base",
     headless: bool = True,
     max_steps: int = 70,
     task_seed: Optional[int] = None,
@@ -239,15 +219,10 @@ def run_single_task(
     results_dir: Optional[str] = None,
     worker_model: Optional[str] = None,
     worker_temperature: float = 0.0,
-    manager_model: Optional[str] = None,
-    use_manager: Optional[bool] = None,
-    use_cache: Optional[bool] = None,
-    use_macros: Optional[bool] = None,
-    manager_warm_start: Optional[bool] = None,
     enable_recovery_policies: Optional[bool] = None,
-    always_call_manager: Optional[bool] = None,
     qwen_backend: Optional[str] = None,
     qwen_base_url: Optional[str] = None,
+    traj_group: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
     """Run a single task with HALO Agent.
@@ -257,10 +232,10 @@ def run_single_task(
     Args:
         task_name: Name of the task (v2. prefix added if missing)
         mode: Agent mode:
-            - baseline_worker: Worker only
-            - hierarchy_mgr_gate: Worker + Manager
-            - hierarchy_vac: Worker + Manager + VAC
-            - hierarchy_vac_macros: Full HALO (default)
+            - gpt4o_baseline: GPT-4o for comparison / MCTS critic
+            - qwen3vl_base: Qwen3-VL-8B base (before training)
+            - qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
+            - qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
         headless: Run browser in headless mode (default: True)
         max_steps: Maximum steps (default: 70 for score-mode, use 25 for speed-mode)
         run_id: Run ID for logging
@@ -273,23 +248,18 @@ def run_single_task(
     # Ensure v2 prefix
     task_name = ensure_v2_task(task_name)
     task_id = derive_task_id(task_name)
-    
+
     agent_args = HaloAgentArgs(
         mode=mode,
         max_steps=max_steps,
         run_id=run_id,
         task_seed=task_seed,
-        worker_model=worker_model or "gpt-4o-mini",
+        worker_model=worker_model or "Qwen/Qwen3-VL-8B-Instruct",
         worker_temperature=float(worker_temperature),
-        manager_model=manager_model or "gpt-4o",
-        use_manager=use_manager,
-        use_cache=use_cache,
-        use_macros=use_macros,
-        manager_warm_start=manager_warm_start,
         enable_recovery_policies=enable_recovery_policies,
-        always_call_manager=always_call_manager,
         qwen_backend=qwen_backend,
         qwen_base_url=qwen_base_url,
+        traj_group=traj_group,
     )
 
     harness = create_harness(
@@ -320,7 +290,7 @@ def run_single_task(
 
 def run_task_subset(
     task_names: list,
-    mode: str = "hierarchy_vac_macros",
+    mode: str = "qwen3vl_base",
     headless: bool = True,
     max_steps: int = 70,
     run_id: Optional[str] = None,

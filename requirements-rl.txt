@@ -1,0 +1,30 @@
+# RL / LoRA training dependencies for GRPO pipeline
+# Install with: pip install -r requirements-rl.txt
+
+# Core ML
+torch>=2.1.0
+transformers>=4.40.0
+accelerate>=0.27.0
+datasets>=2.18.0
+
+# LoRA / PEFT
+peft>=0.10.0
+
+# RL training
+trl>=0.8.0
+
+# Unsloth (fast LoRA fine-tuning) - install separately for best compatibility:
+#   pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+# Or use the PyPI release:
+unsloth>=2024.4
+
+# Quantization (optional, for 4-bit training)
+bitsandbytes>=0.43.0
+
+# Utilities
+einops>=0.7.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+
+# Weights & Biases (optional, for experiment tracking)
+wandb>=0.16.0

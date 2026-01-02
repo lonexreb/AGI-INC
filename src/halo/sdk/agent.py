@@ -1,13 +1,14 @@
 """Base agent class matching AGI SDK interface.
 
 This module provides the HaloAgent class that integrates with AGI SDK v0.3.5
-and implements the worker+manager architecture for REAL Bench tasks.
+for REAL Bench tasks. Simplified for Online RL - just policy -> action -> reward.
 
 Supported modes:
-- baseline_worker: Worker only, no manager, no caches
-- hierarchy_mgr_gate: Worker + Manager (gated), no caches
-- hierarchy_vac: Worker + Manager + VAC
-- hierarchy_vac_macros: Worker + Manager + VAC + Macro cache (full HALO)
+- baseline_worker: GPT-4o-mini worker
+- qwen_worker_zero: Qwen zero-shot worker
+- qwen_worker_bc: Qwen + BC LoRA
+- qwen_worker_dpo: Qwen + DPO LoRA
+- qwen_worker_grpo: Qwen + GRPO LoRA
 """
 
 import logging
@@ -90,112 +91,67 @@ def repair_action(action: str) -> str:
 class HaloAgent(Agent):
     """HALO Agent implementation for AGI SDK.
 
-    This agent follows the worker+manager architecture with:
-    - Macro Replay Cache (skills)
-    - Verified Action Cache (state->action)
-    - Worker policy (fast)
-    - Manager policy (errors/loops/high-stakes)
-    
+    Simplified for Online RL - just policy -> action -> reward.
+    Uses Qwen3-VL-8B Vision-Language Model for GUI control.
+
     Supported modes:
-    - baseline_worker: Worker only, no manager, no caches
-    - hierarchy_mgr_gate: Worker + Manager (gated), no caches  
-    - hierarchy_vac: Worker + Manager + VAC
-    - hierarchy_vac_macros: Worker + Manager + VAC + Macro cache
+    - gpt4o_baseline: GPT-4o for comparison / MCTS critic
+    - qwen3vl_base: Qwen3-VL-8B base (before training)
+    - qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
+    - qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
     """
 
-    # Mode configurations: (use_manager, use_cache, use_macros)
-    MODE_CONFIG = {
-        'baseline_worker': (False, False, False),
-        'hierarchy_mgr_gate': (True, False, False),
-        'hierarchy_vac': (True, True, False),
-        'hierarchy_vac_macros': (True, True, True),
-        # Expert rollout mode for trajectory collection (NOT in ablation experiments)
-        # Uses gpt-4o worker for higher quality data collection
-        'expert_rollout': (True, True, True),
-        # Qwen-based modes (use manager + caches, but Qwen worker)
-        'qwen_worker_zero': (True, True, True),
-        'qwen_worker_bc': (True, True, True),
-        'qwen_worker_dpo': (True, True, True),
-        'qwen_worker_grpo': (True, True, True),
-        # Legacy mode names for compatibility
-        'baseline': (False, False, False),
-        'halo': (True, False, False),
-        'halo_cache': (True, True, True),
-    }
-    
-    # Worker model overrides per mode (default is gpt-4o-mini)
-    MODE_WORKER_MODEL = {
-        'expert_rollout': 'gpt-4o',  # Stronger model for data collection
-    }
+    # Valid modes
+    VALID_MODES = [
+        'gpt4o_baseline',    # GPT-4o for comparison / MCTS critic
+        'qwen3vl_base',      # Qwen3-VL-8B base (before training)
+        'qwen3vl_grpo',      # Qwen3-VL + Online GRPO LoRA
+        'qwen3vl_mcts',      # Qwen3-VL + MCTS-trained LoRA (Agent Q style)
+    ]
 
     def __init__(
         self,
-        mode: str = "hierarchy_vac_macros",
+        mode: str = "qwen3vl_base",
+        worker_model: str = "Qwen/Qwen3-VL-8B-Instruct",
+        worker_temperature: float = 0.0,
+        max_steps: int = 70,
+        enable_recovery_policies: Optional[bool] = None,
+        qwen_backend: Optional[str] = None,
+        qwen_base_url: Optional[str] = None,
+        traj_logger: Optional[TrajectoryLogger] = None,
+        # Legacy parameters (ignored)
         use_cache: Optional[bool] = None,
         use_macros: Optional[bool] = None,
         use_manager: Optional[bool] = None,
-        worker_model: str = "gpt-4o-mini",
-        worker_temperature: float = 0.0,
         manager_model: str = "gpt-4o",
-        max_steps: int = 70,
         manager_warm_start: Optional[bool] = None,
-        enable_recovery_policies: Optional[bool] = None,
         always_call_manager: Optional[bool] = None,
-        qwen_backend: Optional[str] = None,
-        qwen_base_url: Optional[str] = None,
-        traj_logger: Optional[TrajectoryLogger] = None
     ) -> None:
         super().__init__()
 
-        resolved_use_manager = use_manager
-        resolved_use_cache = use_cache
-        resolved_use_macros = use_macros
+        # Warn about deprecated parameters
+        if use_cache is not None or use_macros is not None or use_manager is not None:
+            logger.warning("use_cache, use_macros, use_manager are deprecated and ignored")
 
-        if mode in self.MODE_CONFIG:
-            default_use_manager, default_use_cache, default_use_macros = self.MODE_CONFIG[mode]
-            if resolved_use_manager is None:
-                resolved_use_manager = default_use_manager
-            if resolved_use_cache is None:
-                resolved_use_cache = default_use_cache
-            if resolved_use_macros is None:
-                resolved_use_macros = default_use_macros
-        else:
-            logger.warning(f"Unknown mode '{mode}', using provided flags")
-            if resolved_use_manager is None:
-                resolved_use_manager = True
-            if resolved_use_cache is None:
-                resolved_use_cache = True
-            if resolved_use_macros is None:
-                resolved_use_macros = True
-
-        if mode.startswith("qwen_worker") and worker_model == "gpt-4o-mini":
-            worker_model = os.environ.get("HALO_WORKER_MODEL") or "Qwen/Qwen2.5-3B-Instruct"
-
-        if mode in self.MODE_WORKER_MODEL and worker_model == "gpt-4o-mini":
-            worker_model = self.MODE_WORKER_MODEL[mode]
-            logger.info(f"Mode '{mode}' using worker model: {worker_model}")
-
-        if mode.startswith("qwen_worker"):
+        # Set model based on mode
+        if mode == "gpt4o_baseline":
+            worker_model = "gpt-4o"
+        elif mode.startswith("qwen3vl"):
+            # All Qwen3-VL modes use the VLM
+            if worker_model == "Qwen/Qwen3-VL-8B-Instruct" or worker_model == "gpt-4o-mini":
+                worker_model = os.environ.get("HALO_WORKER_MODEL") or "Qwen/Qwen3-VL-8B-Instruct"
             if qwen_backend is None:
                 qwen_backend = os.environ.get("HALO_WORKER_BACKEND") or "vllm"
             if qwen_base_url is None:
                 qwen_base_url = os.environ.get("HALO_VLLM_URL") or "http://localhost:8000/v1"
 
-        resolved_manager_warm_start = manager_warm_start if manager_warm_start is not None else True
         resolved_enable_recovery_policies = enable_recovery_policies if enable_recovery_policies is not None else True
-        resolved_always_call_manager = always_call_manager if always_call_manager is not None else False
 
         config = OrchestratorConfig(
-            use_cache=bool(resolved_use_cache),
-            use_macros=bool(resolved_use_macros),
-            use_manager=bool(resolved_use_manager),
             worker_model=worker_model,
-            manager_model=manager_model,
             max_steps=max_steps,
             worker_temperature=float(worker_temperature),
-            manager_warm_start=resolved_manager_warm_start,
             enable_recovery_policies=resolved_enable_recovery_policies,
-            always_call_manager=resolved_always_call_manager,
             qwen_backend=qwen_backend or "vllm",
             qwen_base_url=qwen_base_url or "http://localhost:8000/v1",
         )
@@ -210,16 +166,11 @@ class HaloAgent(Agent):
         if traj_logger is not None:
             existing_metadata = dict(getattr(traj_logger, "run_metadata", {}) or {})
             existing_metadata.update({
+                "mode": mode,
                 "worker_model": worker_model,
                 "worker_temperature": float(worker_temperature),
-                "manager_model": manager_model,
-                "use_manager": bool(resolved_use_manager),
-                "use_cache": bool(resolved_use_cache),
-                "use_macros": bool(resolved_use_macros),
                 "max_steps": int(max_steps),
-                "manager_warm_start": bool(resolved_manager_warm_start),
                 "enable_recovery_policies": bool(resolved_enable_recovery_policies),
-                "always_call_manager": bool(resolved_always_call_manager),
                 "qwen_backend": config.qwen_backend,
                 "qwen_base_url": config.qwen_base_url,
             })
@@ -319,7 +270,7 @@ class HaloAgent(Agent):
 
 
 def create_halo_agent(
-    mode: str = "hierarchy_vac_macros",
+    mode: str = "qwen3vl_base",
     traj_logger: Optional[TrajectoryLogger] = None,
     max_steps: int = 70,
     **kwargs
@@ -328,10 +279,10 @@ def create_halo_agent(
 
     Args:
         mode: Agent mode:
-            - baseline_worker: Worker only
-            - hierarchy_mgr_gate: Worker + Manager
-            - hierarchy_vac: Worker + Manager + VAC
-            - hierarchy_vac_macros: Full HALO (default)
+            - gpt4o_baseline: GPT-4o for comparison / MCTS critic
+            - qwen3vl_base: Qwen3-VL-8B base (before training)
+            - qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
+            - qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
         traj_logger: Optional trajectory logger
         max_steps: Maximum steps (default 70 for score-mode, use 25 for speed-mode)
         **kwargs: Additional arguments for HaloAgent

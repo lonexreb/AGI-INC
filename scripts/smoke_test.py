@@ -17,13 +17,17 @@ load_dotenv()
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+# Will be populated by test 3
+SUPPORTED_MODES = []
+
 
 def main():
+    global SUPPORTED_MODES
     print("=" * 50)
     print("HALO-Agent Smoke Test")
     print("=" * 50)
     print()
-    
+
     all_passed = True
     version = "unknown"
 
@@ -49,13 +53,14 @@ def main():
     # Test 3: Import HALO modules
     print("3. Testing HALO module imports...")
     try:
-        from halo.sdk import HaloAgent, SUPPORTED_MODES, validate_action
+        from halo.sdk import HaloAgent, SUPPORTED_MODES as _MODES, validate_action
+        SUPPORTED_MODES = _MODES  # Update module-level variable
         from halo.agent import Orchestrator, OrchestratorConfig
-        from halo.policy import WorkerPolicy, ManagerPolicy, GatingController
-        from halo.cache import VerifiedActionCache, MacroReplayCache
+        from halo.policy import WorkerPolicy, QwenWorkerPolicy
         from halo.verify import ActionVerifier, LoopDetector
         from halo.logging import TrajectoryLogger
         from halo.obs import summarize_observation, build_state_key
+        from halo.rl.progress import score_progress
         print(f"   ✓ All HALO modules imported successfully")
         print(f"   ✓ Supported modes: {SUPPORTED_MODES}\n")
     except ImportError as e:
@@ -66,7 +71,7 @@ def main():
     print("4. Testing action validation...")
     try:
         from halo.sdk import validate_action, repair_action
-        
+
         # Test valid actions
         valid_actions = [
             'click("123")',
@@ -78,14 +83,14 @@ def main():
         ]
         for action in valid_actions:
             assert validate_action(action), f"Should be valid: {action}"
-        
+
         # Test invalid actions
         assert not validate_action(''), "Empty should be invalid"
         assert not validate_action('invalid'), "Invalid should be invalid"
-        
+
         # Test repair
         assert repair_action('') == 'noop()', "Empty should repair to noop"
-        
+
         print(f"   ✓ Action validation working correctly\n")
     except Exception as e:
         print(f"   ✗ Action validation failed: {e}\n")
@@ -95,17 +100,8 @@ def main():
     print("5. Testing agent creation for each mode...")
     try:
         from halo.sdk import HaloAgent, SUPPORTED_MODES
-        
-        for mode in [
-            'baseline_worker',
-            'hierarchy_mgr_gate',
-            'hierarchy_vac',
-            'hierarchy_vac_macros',
-            'qwen_worker_zero',
-            'qwen_worker_bc',
-            'qwen_worker_dpo',
-            'qwen_worker_grpo',
-        ]:
+
+        for mode in SUPPORTED_MODES:
             agent = HaloAgent(mode=mode, max_steps=5)
             assert agent.mode == mode
             print(f"   ✓ Created agent with mode: {mode}")
@@ -121,7 +117,7 @@ def main():
         repo_root / "results",
         repo_root / "data" / "trajectories",
         repo_root / "data" / "datasets",
-        repo_root / "data" / "cache",
+        repo_root / "outputs",
     ]
     for dir_path in dirs_to_create:
         dir_path.mkdir(parents=True, exist_ok=True)
@@ -132,21 +128,12 @@ def main():
     print("7. Writing smoke test status...")
     results_dir = repo_root / "results" / "smoke_test"
     results_dir.mkdir(parents=True, exist_ok=True)
-    
+
     status = {
         "timestamp": datetime.now().isoformat(),
         "smoke_test": "passed" if all_passed else "failed",
         "agisdk_version": version,
-        "supported_modes": [
-            'baseline_worker',
-            'hierarchy_mgr_gate',
-            'hierarchy_vac',
-            'hierarchy_vac_macros',
-            'qwen_worker_zero',
-            'qwen_worker_bc',
-            'qwen_worker_dpo',
-            'qwen_worker_grpo',
-        ],
+        "supported_modes": SUPPORTED_MODES,
         "constraints": {
             "task_version": "v2",
             "browser_dimensions": [1280, 720],
@@ -166,13 +153,17 @@ def main():
         print("SUCCESS: All smoke tests passed!")
         print()
         print("Next steps:")
-        print("  python scripts/eval_subset.py --mode baseline_worker --dry-run")
-        print("  python scripts/eval_subset.py --mode baseline_worker --subset_size 5")
+        print("  # Start vLLM server (in tmux):")
+        print("  vllm serve Qwen/Qwen3-VL-8B-Instruct --port 8000")
+        print()
+        print("  # Run evaluation:")
+        print("  python scripts/eval_subset.py --mode qwen3vl_base --dry-run")
+        print("  python scripts/eval_subset.py --mode qwen3vl_base --subset_size 5")
     else:
         print("FAILED: Some smoke tests failed!")
         print("Please check the errors above and fix before proceeding.")
     print("=" * 50)
-    
+
     return all_passed
 
 

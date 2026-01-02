@@ -1,0 +1,626 @@
+{
+  "agisdk_version": "0.3.5",
+  "counts_by_site": {
+    "dashdish": 11,
+    "gocalendar": 10,
+    "gomail": 21,
+    "marrisuite": 1,
+    "networkin": 10,
+    "omnizon": 10,
+    "opendining": 11,
+    "staynb": 11,
+    "topwork": 12,
+    "udriver": 14,
+    "zilloft": 10
+  },
+  "generated_at": "2025-12-27T12:42:08.545724+00:00",
+  "task_version": "v2",
+  "tasks": [
+    {
+      "task_id": 1,
+      "task_name": "v2.dashdish-1",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 10,
+      "task_name": "v2.dashdish-10",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 11,
+      "task_name": "v2.dashdish-11",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 12,
+      "task_name": "v2.dashdish-12",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 17,
+      "task_name": "v2.dashdish-17",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 24,
+      "task_name": "v2.dashdish-24",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 26,
+      "task_name": "v2.dashdish-26",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 3,
+      "task_name": "v2.dashdish-3",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 4,
+      "task_name": "v2.dashdish-4",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 7,
+      "task_name": "v2.dashdish-7",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 8,
+      "task_name": "v2.dashdish-8",
+      "task_type": "dashdish"
+    },
+    {
+      "task_id": 10,
+      "task_name": "v2.gocalendar-10",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 11,
+      "task_name": "v2.gocalendar-11",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 12,
+      "task_name": "v2.gocalendar-12",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 13,
+      "task_name": "v2.gocalendar-13",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 16,
+      "task_name": "v2.gocalendar-16",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 18,
+      "task_name": "v2.gocalendar-18",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 23,
+      "task_name": "v2.gocalendar-23",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 4,
+      "task_name": "v2.gocalendar-4",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 6,
+      "task_name": "v2.gocalendar-6",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 8,
+      "task_name": "v2.gocalendar-8",
+      "task_type": "gocalendar"
+    },
+    {
+      "task_id": 1,
+      "task_name": "v2.gomail-1",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 11,
+      "task_name": "v2.gomail-11",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 12,
+      "task_name": "v2.gomail-12",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 13,
+      "task_name": "v2.gomail-13",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 14,
+      "task_name": "v2.gomail-14",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 15,
+      "task_name": "v2.gomail-15",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 16,
+      "task_name": "v2.gomail-16",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 17,
+      "task_name": "v2.gomail-17",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 18,
+      "task_name": "v2.gomail-18",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 19,
+      "task_name": "v2.gomail-19",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 2,
+      "task_name": "v2.gomail-2",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 20,
+      "task_name": "v2.gomail-20",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 21,
+      "task_name": "v2.gomail-21",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 23,
+      "task_name": "v2.gomail-23",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 24,
+      "task_name": "v2.gomail-24",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 26,
+      "task_name": "v2.gomail-26",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 4,
+      "task_name": "v2.gomail-4",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 5,
+      "task_name": "v2.gomail-5",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 7,
+      "task_name": "v2.gomail-7",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 8,
+      "task_name": "v2.gomail-8",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 9,
+      "task_name": "v2.gomail-9",
+      "task_type": "gomail"
+    },
+    {
+      "task_id": 8,
+      "task_name": "v2.marrisuite-8",
+      "task_type": "marrisuite"
+    },
+    {
+      "task_id": 1,
+      "task_name": "v2.networkin-1",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 10,
+      "task_name": "v2.networkin-10",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 11,
+      "task_name": "v2.networkin-11",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 13,
+      "task_name": "v2.networkin-13",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 19,
+      "task_name": "v2.networkin-19",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 25,
+      "task_name": "v2.networkin-25",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 26,
+      "task_name": "v2.networkin-26",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 27,
+      "task_name": "v2.networkin-27",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 5,
+      "task_name": "v2.networkin-5",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 6,
+      "task_name": "v2.networkin-6",
+      "task_type": "networkin"
+    },
+    {
+      "task_id": 13,
+      "task_name": "v2.omnizon-13",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 15,
+      "task_name": "v2.omnizon-15",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 17,
+      "task_name": "v2.omnizon-17",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 24,
+      "task_name": "v2.omnizon-24",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 25,
+      "task_name": "v2.omnizon-25",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 28,
+      "task_name": "v2.omnizon-28",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 29,
+      "task_name": "v2.omnizon-29",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 3,
+      "task_name": "v2.omnizon-3",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 30,
+      "task_name": "v2.omnizon-30",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 9,
+      "task_name": "v2.omnizon-9",
+      "task_type": "omnizon"
+    },
+    {
+      "task_id": 1,
+      "task_name": "v2.opendining-1",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 12,
+      "task_name": "v2.opendining-12",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 17,
+      "task_name": "v2.opendining-17",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 2,
+      "task_name": "v2.opendining-2",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 20,
+      "task_name": "v2.opendining-20",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 24,
+      "task_name": "v2.opendining-24",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 4,
+      "task_name": "v2.opendining-4",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 5,
+      "task_name": "v2.opendining-5",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 6,
+      "task_name": "v2.opendining-6",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 7,
+      "task_name": "v2.opendining-7",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 9,
+      "task_name": "v2.opendining-9",
+      "task_type": "opendining"
+    },
+    {
+      "task_id": 1,
+      "task_name": "v2.staynb-1",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 12,
+      "task_name": "v2.staynb-12",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 13,
+      "task_name": "v2.staynb-13",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 14,
+      "task_name": "v2.staynb-14",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 15,
+      "task_name": "v2.staynb-15",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 17,
+      "task_name": "v2.staynb-17",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 19,
+      "task_name": "v2.staynb-19",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 4,
+      "task_name": "v2.staynb-4",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 5,
+      "task_name": "v2.staynb-5",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 6,
+      "task_name": "v2.staynb-6",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 9,
+      "task_name": "v2.staynb-9",
+      "task_type": "staynb"
+    },
+    {
+      "task_id": 10,
+      "task_name": "v2.topwork-10",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 11,
+      "task_name": "v2.topwork-11",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 12,
+      "task_name": "v2.topwork-12",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 13,
+      "task_name": "v2.topwork-13",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 14,
+      "task_name": "v2.topwork-14",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 2,
+      "task_name": "v2.topwork-2",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 21,
+      "task_name": "v2.topwork-21",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 3,
+      "task_name": "v2.topwork-3",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 4,
+      "task_name": "v2.topwork-4",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 7,
+      "task_name": "v2.topwork-7",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 8,
+      "task_name": "v2.topwork-8",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 9,
+      "task_name": "v2.topwork-9",
+      "task_type": "topwork"
+    },
+    {
+      "task_id": 11,
+      "task_name": "v2.udriver-11",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 13,
+      "task_name": "v2.udriver-13",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 14,
+      "task_name": "v2.udriver-14",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 15,
+      "task_name": "v2.udriver-15",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 16,
+      "task_name": "v2.udriver-16",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 17,
+      "task_name": "v2.udriver-17",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 19,
+      "task_name": "v2.udriver-19",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 2,
+      "task_name": "v2.udriver-2",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 20,
+      "task_name": "v2.udriver-20",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 3,
+      "task_name": "v2.udriver-3",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 4,
+      "task_name": "v2.udriver-4",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 6,
+      "task_name": "v2.udriver-6",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 7,
+      "task_name": "v2.udriver-7",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 9,
+      "task_name": "v2.udriver-9",
+      "task_type": "udriver"
+    },
+    {
+      "task_id": 10,
+      "task_name": "v2.zilloft-10",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 14,
+      "task_name": "v2.zilloft-14",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 15,
+      "task_name": "v2.zilloft-15",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 2,
+      "task_name": "v2.zilloft-2",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 22,
+      "task_name": "v2.zilloft-22",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 23,
+      "task_name": "v2.zilloft-23",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 3,
+      "task_name": "v2.zilloft-3",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 5,
+      "task_name": "v2.zilloft-5",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 6,
+      "task_name": "v2.zilloft-6",
+      "task_type": "zilloft"
+    },
+    {
+      "task_id": 9,
+      "task_name": "v2.zilloft-9",
+      "task_type": "zilloft"
+    }
+  ],
+  "total_tasks": 121
+}
