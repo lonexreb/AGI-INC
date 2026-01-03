@@ -4,24 +4,105 @@
 
 HALO-Agent is a browser automation agent for AGI Inc's REAL Benchmark. The project has evolved from a GPT-4o based hierarchical system to an **Online Reinforcement Learning** approach using **Qwen3-VL-8B**, a Vision-Language Model capable of directly processing screenshots for GUI control.
 
+**Current Status**: Deployed on TensorDock H100, running first Online GRPO training.
+
 ---
 
 ## Project Evolution
 
 ### Phase 1: Hierarchical Agent (GPT-4o)
-- **Architecture**: Worker (gpt-4o-mini) + Manager (gpt-4o) hierarchy
-- **Features**: Verified Action Cache (VAC), Macro skills, Recovery policies
-- **Limitation**: High API costs, no learning from experience
+
+**Goal**: Build a working browser agent using existing LLM APIs.
+
+**What We Built**:
+- Worker (gpt-4o-mini) + Manager (gpt-4o) hierarchy
+- `src/halo/policy/worker.py` - GPT-4o policy
+- `src/halo/agent/orchestrator.py` - Main agent logic
+- Verified Action Cache (VAC) and Macro skills
+
+**Limitations Discovered**:
+- High API costs (~$0.50/task)
+- No learning from experience
+- Manager rarely needed (worker handled most cases)
+
+---
 
 ### Phase 2: Offline RL Exploration (Qwen2.5-3B)
-- **Approach**: Behavioral Cloning (BC), Direct Preference Optimization (DPO)
-- **Model**: Qwen2.5-3B-Instruct (text-only)
-- **Limitation**: Required pre-collected trajectories, text-only (no vision)
+
+**Goal**: Train a local model to reduce API costs and enable learning.
+
+**What We Built**:
+- `src/halo/policy/qwen_worker.py` - Qwen2.5-3B text policy
+- Trajectory collection scripts
+- BC (Behavioral Cloning) and DPO training setup
+
+**Limitations Discovered**:
+- Required pre-collected trajectories (expensive to gather)
+- Text-only model (no vision, relies on AXTree)
+- Distribution shift between collected data and live environment
+
+---
 
 ### Phase 3: Online RL with VLM (Current)
-- **Approach**: Online GRPO (Group Relative Policy Optimization)
-- **Model**: Qwen3-VL-8B-Instruct (Vision-Language Model)
-- **Innovation**: Direct screenshot processing, real-time learning
+
+**Goal**: Real-time learning from screenshots using a Vision-Language Model.
+
+**Why Qwen3-VL-8B**:
+- Native GUI agent capability (computer-use)
+- Direct 2D coordinate grounding
+- Official Computer-Use Cookbook from Qwen team
+- 256K context window for long sessions
+
+**What We Built**:
+
+1. **VLM Policy Client** (`src/halo/policy/vllm_client.py`)
+   - Connects to vLLM server with OpenAI-compatible API
+   - Base64 screenshot encoding
+   - `sample_actions(screenshot, goal, n=8)` for GRPO
+   - `sample_single(screenshot, goal)` for evaluation
+   - Action parsing, validation, and repair
+
+2. **Dense Reward Calculator** (`src/halo/rl/progress.py`)
+   - Progress-based rewards per site (Omnizon, GoMail, GoCalendar)
+   - Novelty bonus (+0.2) for new states
+   - Loop penalty (-0.5) for repeated actions
+   - Success bonus (+1.0) for task completion
+
+3. **Online GRPO Trainer** (`src/halo/rl/online_grpo.py`)
+   - GRPOConfig dataclass with hyperparameters
+   - dr_grpo loss (mean-centering only, handles zero variance)
+   - Real-time LoRA weight updates
+   - Checkpointing and metrics logging
+
+4. **Training Script** (`scripts/train_online_grpo.py`)
+   - CLI entry point with --tasks, --episodes, --dry-run
+   - Results saved to `results/grpo_training/`
+
+5. **Deployment Scripts**
+   - `launch.sh` - All-in-one setup + vLLM + training
+   - `teardown.sh` - Cleanup before stopping instance
+
+---
+
+## Architecture Evolution
+
+```
+Phase 1 (GPT-4o)          Phase 2 (Offline RL)       Phase 3 (Online RL) ← CURRENT
+─────────────────         ──────────────────         ────────────────────
+┌─────────────┐           ┌─────────────┐            ┌─────────────────┐
+│   Manager   │           │  BC/DPO     │            │  Qwen3-VL-8B    │
+│   (GPT-4o)  │           │  Training   │            │  + Online GRPO  │
+├─────────────┤           ├─────────────┤            ├─────────────────┤
+│   Worker    │           │ Qwen2.5-3B  │            │  vLLM Server    │
+│ (gpt-4o-mini)│          │ (text-only) │            │  (screenshot)   │
+├─────────────┤           ├─────────────┤            ├─────────────────┤
+│    VAC +    │           │ Trajectory  │            │  Dense Rewards  │
+│   Macros    │           │   Replay    │            │  + LoRA Update  │
+└─────────────┘           └─────────────┘            └─────────────────┘
+     ↓                          ↓                          ↓
+ $0.50/task               Needs offline data         Real-time learning
+ No learning              No vision                  Screenshot → Action
+```
 
 ---
 
@@ -55,38 +136,8 @@ HALO-Agent is a browser automation agent for AGI Inc's REAL Benchmark. The proje
 |------|-------------|-------|--------|
 | `gpt4o_baseline` | GPT-4o for comparison/MCTS critic | gpt-4o | Ready |
 | `qwen3vl_base` | Qwen3-VL-8B base (before training) | Qwen3-VL-8B | Ready |
-| `qwen3vl_grpo` | Qwen3-VL + Online GRPO LoRA | Qwen3-VL-8B + LoRA | In Development |
+| `qwen3vl_grpo` | Qwen3-VL + Online GRPO LoRA | Qwen3-VL-8B + LoRA | Training |
 | `qwen3vl_mcts` | Qwen3-VL + MCTS-trained LoRA | Qwen3-VL-8B + LoRA | Planned |
-
----
-
-## Key Components Implemented
-
-### 1. VLM Policy Client (`src/halo/policy/vllm_client.py`)
-- Connects to vLLM server with OpenAI-compatible API
-- Handles screenshot encoding (base64 PNG)
-- `sample_actions(screenshot, goal, n=8)` - For GRPO training
-- `sample_single(screenshot, goal)` - For evaluation (greedy)
-- Action parsing, validation, and repair
-
-### 2. Dense Reward Calculator (`src/halo/rl/progress.py`)
-- Progress-based rewards using site-specific heuristics
-- Novelty bonus (+0.2) for visiting new states
-- Loop penalty (-0.5) for repeated actions
-- Success bonus (+1.0) for task completion
-- Supports: Omnizon, GoMail, GoCalendar
-
-### 3. Online GRPO Trainer (`src/halo/rl/online_grpo.py`)
-- `GRPOConfig` dataclass with all hyperparameters
-- `OnlineGRPOTrainer.train()` - Main training loop
-- `compute_advantages()` - dr_grpo style (mean-centering only)
-- Checkpointing and metrics logging
-
-### 4. Training Script (`scripts/train_online_grpo.py`)
-- CLI entry point for training
-- Supports dry-run mode for validation
-- Configurable tasks, episodes, temperature
-- Results saved to `results/grpo_training/`
 
 ---
 
@@ -102,10 +153,10 @@ HALO-Agent is a browser automation agent for AGI Inc's REAL Benchmark. The proje
 
 ---
 
-## File Structure (Current)
+## File Structure
 
 ```
-halo-agent/
+AGI-INC/
 ├── launch.sh                      # Setup + vLLM + training (run this!)
 ├── teardown.sh                    # Cleanup before stopping instance
 ├── src/halo/
@@ -177,23 +228,47 @@ python scripts/smoke_test.py
 
 ---
 
-## Results Summary
+## Hardware
 
-### Smoke Test Status
-- All HALO modules import successfully
-- Supported modes: `gpt4o_baseline`, `qwen3vl_base`, `qwen3vl_grpo`, `qwen3vl_mcts`
-- Agent creation works for all modes
+| Component | Specification |
+|-----------|---------------|
+| GPU | NVIDIA H100 80GB HBM3 |
+| CUDA | 12.2 |
+| Driver | 535.274.02 |
+| Provider | TensorDock |
+| Cost | ~$2.25/hr |
 
-### Pending Evaluation
-- Full benchmark evaluation pending vLLM server setup
-- Online GRPO training ready to run
+---
+
+## Progress
+
+### Completed
+- [x] Project bootstrap and structure
+- [x] GPT-4o hierarchical agent (Phase 1)
+- [x] Qwen text-only exploration (Phase 2)
+- [x] VLM policy client implementation
+- [x] Dense reward calculator
+- [x] Online GRPO trainer
+- [x] Deployment scripts (launch.sh, teardown.sh)
+- [x] TensorDock deployment with H100
+- [x] NVIDIA drivers installed and verified
+
+### In Progress
+- [ ] First Online GRPO training run
+- [ ] Baseline evaluation (qwen3vl_base)
+- [ ] Training evaluation (qwen3vl_grpo)
+
+### Pending
+- [ ] MCTS integration (Agent Q style)
+- [ ] Full benchmark evaluation
+- [ ] Performance comparison report
 
 ---
 
 ## Next Steps
 
-1. **Run Baseline Evaluation**: Establish qwen3vl_base performance
-2. **Online GRPO Training**: Train on subset of tasks
+1. **Complete First Training Run**: Monitor `./launch.sh` output
+2. **Run Baseline Evaluation**: Establish qwen3vl_base performance
 3. **Compare Results**: qwen3vl_base vs qwen3vl_grpo
 4. **MCTS Integration**: Implement Agent Q style exploration
 
@@ -208,5 +283,4 @@ python scripts/smoke_test.py
 
 ---
 
-*Generated: 2024-12-31*
 *HALO-Agent v0.3.0 (Online RL)*
