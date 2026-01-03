@@ -106,15 +106,17 @@ HALO-Agent is a browser automation agent for AGI Inc's REAL Benchmark. The proje
 
 ```
 halo-agent/
+├── launch.sh                      # Setup + vLLM + training (run this!)
+├── teardown.sh                    # Cleanup before stopping instance
 ├── src/halo/
 │   ├── agent/orchestrator.py      # Main agent logic
 │   ├── policy/
 │   │   ├── worker.py              # GPT-4o policy (baseline)
 │   │   ├── qwen_worker.py         # Qwen text policy
-│   │   └── vllm_client.py         # VLM policy (NEW)
+│   │   └── vllm_client.py         # VLM policy (screenshot → action)
 │   ├── rl/
 │   │   ├── progress.py            # Dense rewards
-│   │   └── online_grpo.py         # GRPO trainer (NEW)
+│   │   └── online_grpo.py         # GRPO trainer
 │   ├── sdk/
 │   │   ├── agent.py               # HaloAgent class
 │   │   └── harness.py             # REAL harness wrapper
@@ -124,7 +126,7 @@ halo-agent/
 ├── scripts/
 │   ├── smoke_test.py              # Setup verification
 │   ├── eval_subset.py             # Evaluation runner
-│   ├── train_online_grpo.py       # Training entry point (NEW)
+│   ├── train_online_grpo.py       # Training entry point
 │   └── list_v2_tasks.py           # Task listing utility
 ├── configs/
 │   └── real_v2_task_registry.json # Task definitions
@@ -141,38 +143,36 @@ halo-agent/
 
 ## How to Run
 
-### 1. Setup
+### TensorDock (One Command)
+```bash
+git clone https://github.com/YOUR_USERNAME/HALO-Agent.git
+cd HALO-Agent
+./launch.sh
+```
+
+`launch.sh` does everything: setup, vLLM server, training.
+
+### Commands
+```bash
+# Full setup + training (first time)
+./launch.sh
+
+# Skip setup, just train (already set up)
+./launch.sh --skip-setup
+
+# Custom task and episodes
+./launch.sh --skip-setup --task v2.omnizon-1 --episodes 20
+
+# Before stopping instance
+./teardown.sh
+```
+
+### Local Development
 ```bash
 python3.10 -m venv .venv && source .venv/bin/activate
 pip install -e .
-playwright install --force
-```
-
-### 2. Smoke Test
-```bash
+playwright install chromium
 python scripts/smoke_test.py
-```
-
-### 3. Start vLLM Server
-```bash
-vllm serve Qwen/Qwen3-VL-8B-Instruct --port 8000
-```
-
-### 4. Run Evaluation
-```bash
-python scripts/eval_subset.py --mode qwen3vl_base --subset_size 5
-```
-
-### 5. Run Training (Online GRPO)
-```bash
-# Dry run first
-python scripts/train_online_grpo.py --dry-run
-
-# Actual training
-python scripts/train_online_grpo.py \
-    --tasks v2.omnizon-1 v2.gomail-1 \
-    --episodes 20 \
-    --num-generations 8
 ```
 
 ---
