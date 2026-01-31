@@ -13,12 +13,13 @@ from agisdk.REAL.browsergym.experiments import AbstractAgentArgs
 
 from .agent import HaloAgent
 from ..logging import TrajectoryLogger
+from ..constants import DEFAULT_MODEL
 
 
 # Supported modes for evaluation (Qwen3-VL based Online RL)
 SUPPORTED_MODES = [
-    'gpt4o_baseline',    # GPT-4o for comparison / MCTS critic
-    'qwen3vl_base',      # Qwen3-VL-8B base (before training)
+    'gpt5_baseline',     # GPT-5.2 for comparison / MCTS critic (best vision)
+    'qwen3vl_base',      # Qwen3-VL-30B-A3B base (before training)
     'qwen3vl_grpo',      # Qwen3-VL + Online GRPO LoRA
     'qwen3vl_mcts',      # Qwen3-VL + MCTS-trained LoRA (Agent Q style)
 ]
@@ -49,11 +50,11 @@ class HaloAgentArgs(AbstractAgentArgs):
     """Arguments for the HALO Agent.
 
     Simplified for Online RL - just policy -> action -> reward.
-    Uses Qwen3-VL-8B Vision-Language Model for GUI control.
+    Uses Qwen3-VL-30B-A3B Vision-Language Model (MoE) for GUI control.
 
     Supported modes:
-    - gpt4o_baseline: GPT-4o for comparison / MCTS critic
-    - qwen3vl_base: Qwen3-VL-8B base (before training)
+    - gpt5_baseline: GPT-5.2 for comparison / MCTS critic (best vision)
+    - qwen3vl_base: Qwen3-VL-30B-A3B base (before training)
     - qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
     - qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
     """
@@ -62,7 +63,7 @@ class HaloAgentArgs(AbstractAgentArgs):
 
     # Agent configuration
     mode: str = "qwen3vl_base"
-    worker_model: str = "Qwen/Qwen3-VL-8B-Instruct"
+    worker_model: str = DEFAULT_MODEL
     worker_temperature: float = 0.0
     max_steps: int = 70  # Default for score-mode; use 25 for speed-mode
 
@@ -232,7 +233,7 @@ def run_single_task(
     Args:
         task_name: Name of the task (v2. prefix added if missing)
         mode: Agent mode:
-            - gpt4o_baseline: GPT-4o for comparison / MCTS critic
+            - gpt5_baseline: GPT-5.2 for comparison / MCTS critic (best vision)
             - qwen3vl_base: Qwen3-VL-8B base (before training)
             - qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
             - qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
@@ -254,7 +255,7 @@ def run_single_task(
         max_steps=max_steps,
         run_id=run_id,
         task_seed=task_seed,
-        worker_model=worker_model or "Qwen/Qwen3-VL-8B-Instruct",
+        worker_model=worker_model or DEFAULT_MODEL,
         worker_temperature=float(worker_temperature),
         enable_recovery_policies=enable_recovery_policies,
         qwen_backend=qwen_backend,

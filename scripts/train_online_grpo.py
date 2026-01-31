@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Online GRPO Training Script for HALO Agent.
 
-This script trains the Qwen3-VL-8B model using Online GRPO (Group Relative
+This script trains the Qwen3-VL-30B-A3B model using Online GRPO (Group Relative
 Policy Optimization) on REAL Benchmark tasks.
 
 Prerequisites:
 1. Start vLLM server:
-   vllm serve Qwen/Qwen3-VL-8B-Instruct --port 8000
+   vllm serve Qwen/Qwen3-VL-30B-A3B-Instruct --port 8000
 
 2. Set up environment:
    pip install agisdk==0.3.5
@@ -146,8 +146,8 @@ def parse_args():
     parser.add_argument(
         "--model",
         type=str,
-        default="Qwen/Qwen3-VL-8B-Instruct",
-        help="Model name (default: Qwen/Qwen3-VL-8B-Instruct)",
+        default="Qwen/Qwen3-VL-30B-A3B-Instruct",
+        help="Model name (default: Qwen/Qwen3-VL-30B-A3B-Instruct)",
     )
 
     # Checkpointing

@@ -22,7 +22,7 @@ TASK="${TASK:-v2.gomail-1}"
 EPISODES="${EPISODES:-10}"
 SKIP_SETUP=false
 VLLM_PORT=8000
-MODEL="Qwen/Qwen3-VL-8B-Instruct"
+MODEL="Qwen/Qwen3-VL-30B-A3B-Instruct"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -151,7 +151,7 @@ OPENAI_API_KEY=
 
 # vLLM Configuration (optional)
 # HALO_VLLM_URL=http://localhost:8000/v1
-# HALO_WORKER_MODEL=Qwen/Qwen3-VL-8B-Instruct
+# HALO_WORKER_MODEL=Qwen/Qwen3-VL-30B-A3B-Instruct
 EOF
     fi
     print_ok "Setup complete"

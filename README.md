@@ -55,7 +55,7 @@ We implement two Online RL methods:
 | `qwen3vl_base` | Qwen3-VL-8B before training (baseline) |
 | `qwen3vl_grpo` | Qwen3-VL + Online GRPO LoRA |
 | `qwen3vl_mcts` | Qwen3-VL + MCTS-trained LoRA |
-| `gpt4o_baseline` | GPT-4o for comparison |
+| `gpt5_baseline` | GPT-5.2 for comparison (best vision model) |
 
 ## Project Structure
 
@@ -94,4 +94,3 @@ Recommended: H100 SXM5 80GB (~$2.25/hr)
 - `START.md` - Quick start guide
 - `REPORT.md` - Project report
 - `CLAUDE.md` - Development instructions
-- `docs/` - Additional documentation

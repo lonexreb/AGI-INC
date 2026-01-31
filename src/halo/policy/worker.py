@@ -1,6 +1,6 @@
 """Worker policy for HALO Agent.
 
-Uses gpt-4o-mini for fast action decisions.
+Uses GPT-5.2 for vision-language action decisions.
 Enforces strict element ID validation to prevent hallucination.
 """
 
@@ -28,8 +28,8 @@ Available actions (use exact syntax):
 
 
 class WorkerPolicy:
-    """Fast worker policy using gpt-4o-mini.
-    
+    """Worker policy using GPT-5.2 (OpenAI's best vision model).
+
     Features:
     - Strict element ID validation (only uses IDs from observation)
     - Structured JSON output with rationale and confidence
@@ -37,7 +37,7 @@ class WorkerPolicy:
     - Automatic repair for invalid IDs
     """
 
-    def __init__(self, model: str = "gpt-4o-mini", temperature: float = 0.0):
+    def __init__(self, model: str = "gpt-5.2", temperature: float = 0.0):
         self.model = model
         self.temperature = temperature
         self._client = None
@@ -227,6 +227,6 @@ Output JSON: {{"action": "click(\"a1b2\")", "rationale": "clicking search button
         return self.invalid_id_count / self.total_action_count
 
 
-def create_worker_policy(model: str = "gpt-4o-mini") -> WorkerPolicy:
+def create_worker_policy(model: str = "gpt-5.2") -> WorkerPolicy:
     """Factory function for worker policy."""
     return WorkerPolicy(model=model)

@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from ..constants import DEFAULT_MODEL
 from ..policy import VLLMPolicyClient
 from .progress import DenseRewardCalculator
 
@@ -107,7 +108,7 @@ class GRPOConfig:
 
     # vLLM
     vllm_base_url: str = "http://localhost:8000/v1"
-    model_name: str = "Qwen/Qwen3-VL-8B-Instruct"
+    model_name: str = DEFAULT_MODEL
 
 
 class OnlineGRPOTrainer:

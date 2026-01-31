@@ -2,12 +2,13 @@
 
 ## What We're Building
 
-HALO-Agent is a browser automation agent for AGI Inc's REAL Benchmark. We're training **Qwen3-VL-8B** (a Vision-Language Model) using **Online Reinforcement Learning** to complete web tasks autonomously.
+HALO-Agent is a browser automation agent for AGI Inc's REAL Benchmark. We're training **Qwen3-VL-30B-A3B** (a Mixture-of-Experts Vision-Language Model, 30B total / 3B active params) using **Online Reinforcement Learning** via the **Tinker API** to complete web tasks autonomously.
 
-**Why Qwen3-VL?**
+**Why Qwen3-VL-30B-A3B?**
 - Built-in "Visual Agent" capability for GUI control
 - 2D grounding (outputs click coordinates directly)
-- Official [Computer-Use Cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/computer_use.ipynb)
+- MoE architecture: 30B total params but only 3B active per forward pass (fast inference)
+- Supported by Tinker API for distributed online RL training
 - 256K native context for long browsing sessions
 
 ## The Goal: Online RL
@@ -21,25 +22,43 @@ We are doing **Online RL**, not offline imitation learning. This means:
 
 **Do NOT suggest Behavioral Cloning (BC) or offline approaches as prerequisites.** The whole point is to learn from scratch through environment interaction.
 
-## Two RL Approaches We're Implementing
+## Training: Tinker API for Online RL
 
-### 1. Online GRPO with Dense Reward Shaping
+We use the **Tinker API** (by Thinking Machines Lab) for distributed online RL. Tinker handles model hosting, inference, and gradient updates; we provide the browser environment, reward function, and observation encoding.
 
-Group Relative Policy Optimization where the agent:
-1. Observes current browser state
-2. Samples N candidate actions (the "group")
-3. Executes each action, collects rewards
-4. Computes advantages relative to group mean
-5. Updates policy to favor higher-reward actions
+**Architecture:**
+```
+train_tinker.py → Tinker train.main(cfg) → do_group_rollout() → BrowserEnv
+     ↕ Tinker API ↕
+sample() ←→ Qwen3-VL-30B-A3B (hosted by Tinker)
+forward_backward() + optim_step() → LoRA weight updates (hosted by Tinker)
+```
 
-**Key insight:** Dense rewards from `progress.py` provide learning signal even when tasks aren't fully completed. We don't need sparse "success/fail" - we reward partial progress.
+**Key inversion:** In eval mode, HALO calls the model (via vLLM). In training mode, Tinker calls HALO via `BrowserEnv.step()`.
+
+**Training entry point:**
+```bash
+# Prerequisites: pip install tinker tinker-cookbook && export TINKER_API_KEY=...
+python scripts/train_tinker.py --tasks v2.omnizon-1 --num-envs 8 --loss-fn importance_sampling
+```
+
+**Supported loss functions:** `importance_sampling` (default), `ppo`, `cispo`, `dro`
+
+### GRPO via Tinker
+
+Group Relative Policy Optimization where:
+1. `BrowserGroupBuilder` creates N=8 `BrowserEnv` instances for the same task
+2. Tinker runs parallel rollouts, each env interacts with the model
+3. Dense rewards from `progress.py` + `DenseRewardCalculator` provide per-step signal
+4. Tinker computes group-relative advantages and updates LoRA weights
+5. No local GPU needed — Tinker hosts the model remotely
 
 **Critical config:**
-- `loss_type="dr_grpo"` - Removes std normalization, prevents zero-gradient when rewards are similar
-- `num_generations >= 8` - Need enough samples for meaningful group comparison
-- Monitor `frac_reward_zero_std` - If >50%, rewards lack variance, learning stalls
+- `--loss-fn importance_sampling` - Works well for browser tasks with high reward variance
+- `--num-envs 8` - GRPO group size; need enough samples for meaningful advantage
+- `--lora-rank 32` - LoRA adapter rank for weight updates
 
-### 2. MCTS-Guided Exploration (Agent Q Style)
+### MCTS-Guided Exploration (Agent Q Style)
 
 Monte Carlo Tree Search to systematically explore the action space:
 1. At each state, sample K candidate actions from policy
@@ -59,8 +78,8 @@ Monte Carlo Tree Search to systematically explore the action space:
 
 | Mode | Description |
 |------|-------------|
-| `gpt4o_baseline` | GPT-4o for comparison / MCTS critic |
-| `qwen3vl_base` | Qwen3-VL-8B base (before training) |
+| `gpt5_baseline` | GPT-5.2 for comparison / MCTS critic (best vision model) |
+| `qwen3vl_base` | Qwen3-VL-30B-A3B base (before training) |
 | `qwen3vl_grpo` | Qwen3-VL + Online GRPO LoRA |
 | `qwen3vl_mcts` | Qwen3-VL + MCTS-trained LoRA (Agent Q style) |
 
@@ -80,7 +99,7 @@ checkpoints/
 
 | Constraint | Value | Why |
 |------------|-------|-----|
-| Model | `Qwen/Qwen3-VL-8B-Instruct` | VLM with GUI agent capability |
+| Model | `Qwen/Qwen3-VL-30B-A3B-Instruct` | MoE VLM (30B total, 3B active) with GUI agent capability |
 | SDK Version | `agisdk==0.3.5` | Pinned for REAL benchmark compatibility |
 | Task Version | v2 | All tasks use `task_version="v2"` |
 | Observation | **Screenshots** + AXTree | VLM sees images directly |
@@ -122,22 +141,30 @@ The agent gets rewards for partial progress, not just task completion. These are
 ```
 HALO-Agent/
 ├── src/halo/
+│   ├── constants.py          # DEFAULT_MODEL = "Qwen/Qwen3-VL-30B-A3B-Instruct"
 │   ├── sdk/
 │   │   ├── harness.py        # SUPPORTED_MODES, HaloAgentArgs
 │   │   └── agent.py          # VALID_MODES, mode handling
 │   ├── agent/
 │   │   └── orchestrator.py   # OrchestratorConfig, mode routing
+│   ├── tinker/               # *** Tinker API integration (online RL) ***
+│   │   ├── __init__.py       # Package exports
+│   │   ├── browser_env.py    # Tinker Env ABC wrapping REAL benchmark
+│   │   ├── group_builder.py  # GRPO group builder (N envs per task)
+│   │   ├── dataset.py        # RLDataset/RLDatasetBuilder for task batching
+│   │   └── action_parser.py  # Parse/validate model output → browser actions
 │   ├── rl/
-│   │   ├── online_grpo.py    # Online GRPO trainer
+│   │   ├── online_grpo.py    # Online GRPO trainer (local vLLM, legacy)
 │   │   ├── mcts.py           # MCTS exploration
 │   │   └── progress.py       # Dense reward functions
 │   ├── policy/
-│   │   ├── vllm_client.py    # vLLM API client (VLM inference)
+│   │   ├── vllm_client.py    # vLLM API client (eval inference)
 │   │   └── action_parser.py  # Parse model output to actions
-│   └── env/browser_env.py    # REAL benchmark wrapper
+│   └── env/browser_env.py    # REAL benchmark wrapper (eval)
 ├── scripts/
-│   ├── serve_policy.py       # Start vLLM server
-│   ├── train_online_grpo.py  # Online GRPO training loop
+│   ├── train_tinker.py       # *** Tinker RL training entry point ***
+│   ├── serve_policy.py       # Start vLLM server (eval)
+│   ├── train_online_grpo.py  # Online GRPO training loop (local vLLM, legacy)
 │   ├── train_mcts.py         # MCTS training loop
 │   ├── smoke_test.py         # Environment verification
 │   └── eval.py               # Evaluation
@@ -150,8 +177,11 @@ HALO-Agent/
 
 ## Common Tasks
 
-**"Help me implement online GRPO"**
-→ Work on `src/halo/rl/online_grpo.py`. Core loop: sample actions → execute in env → compute group advantages → policy gradient update.
+**"Help me train with Tinker"**
+→ Use `scripts/train_tinker.py`. Configure tasks, loss function, reward weights. Tinker handles the training loop via `tinker_cookbook.rl.train.main()`. The browser environment is in `src/halo/tinker/browser_env.py`.
+
+**"Help me implement online GRPO (local)"**
+→ Work on `src/halo/rl/online_grpo.py`. Legacy local-vLLM approach. Core loop: sample actions → execute in env → compute group advantages → policy gradient update.
 
 **"Help me implement MCTS exploration"**
 → Work on `src/halo/rl/mcts.py`. Implement UCB1 selection, tree expansion, AI critique for value estimation, backpropagation.
@@ -172,99 +202,94 @@ HALO-Agent/
 3. **Do NOT train on pre-collected datasets** - The agent collects its own data
 4. **Do NOT skip reward shaping** - Sparse rewards won't work, dense signals are essential
 
-## Architecture: vLLM + Vision-Language Model
+## Architecture
 
-Qwen3-VL-8B processes **screenshots directly** — no need to convert to text. The model sees the browser and outputs actions.
+### Training: Tinker API (Primary)
 
-```
-Input: Screenshot (PNG) + Goal text
-Output: Action JSON with coordinates or element references
-```
-
-Online RL requires fast, repeated inference. vLLM makes this practical:
+Qwen3-VL-30B-A3B is hosted remotely by the Tinker API. We provide the browser environment; Tinker drives inference and gradient updates.
 
 ```
-Standard transformers:
-  8 action samples × 3 sec each = 24 seconds per step
-  = Unusable for RL
-
-vLLM:
-  8 action samples batched = 2-3 seconds per step
-  = Practical for RL
+Tinker train loop → sample(prompt) → Qwen3-VL-30B-A3B (remote)
+                  → BrowserEnv.step(action_tokens) → Playwright browser (local)
+                  → forward_backward() + optim_step() → LoRA updates (remote)
 ```
 
-**vLLM serves the VLM as an API:**
+**Key design decisions:**
+- **No Orchestrator recovery policies in training** — recovery masks mistakes, reducing gradient signal. Model learns to handle loops/errors via reward shaping.
+- **Fresh observation per step** — each `step()` builds a new ModelInput with current screenshot + goal + last 5 actions. Keeps tokens bounded at ~3-5K per step across 70-step episodes.
+- **Async-sync bridge** — `ThreadPoolExecutor` + `run_in_executor()` bridges Tinker's async rollout with Playwright's synchronous API. Max 8 concurrent browsers.
+
+**Prerequisites:**
+```bash
+pip install tinker tinker-cookbook
+export TINKER_API_KEY=your_key_here  # Sign up at https://auth.thinkingmachines.ai/sign-up
+```
+
+### Evaluation: vLLM (Local Inference)
+
+For eval modes, vLLM serves the model locally as an OpenAI-compatible API:
 
 ```python
 from openai import OpenAI
-import base64
-
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="dummy")
 
-# Encode screenshot
-with open("screenshot.png", "rb") as f:
-    img_b64 = base64.b64encode(f.read()).decode()
-
 response = client.chat.completions.create(
-    model="Qwen/Qwen3-VL-8B-Instruct",
+    model="Qwen/Qwen3-VL-30B-A3B-Instruct",
     messages=[{
         "role": "user",
         "content": [
             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img_b64}"}},
-            {"type": "text", "text": f"Goal: {goal}\nWhat action should I take? Respond with JSON."}
+            {"type": "text", "text": f"Goal: {goal}\nWhat action should I take?"}
         ]
     }],
-    n=8,  # Sample 8 actions
+    n=8,
     temperature=0.7
 )
 ```
 
-**For LoRA adapters during training:**
-vLLM supports hot-reloading LoRA weights. The training loop:
-1. Runs episodes, collects rewards
-2. Computes policy gradient
-3. Updates LoRA weights
-4. Reloads weights in vLLM
-5. Repeat
+## Hardware Setup
 
-## Hardware Setup: TensorDock (Single Machine)
+### Training (Tinker API — no local GPU required)
 
-Everything runs on TensorDock - browser, vLLM, and training. No split setup needed.
+Tinker hosts the model remotely. You only need a machine to run browsers:
 
 | Component | Runs On | Details |
 |-----------|---------|---------|
-| Browser (Playwright) | TensorDock | Headless Chromium, REAL benchmark |
+| Browser (Playwright) | Local / TensorDock | Headless Chromium, REAL benchmark |
+| Model + Training | Tinker API (remote) | Inference + LoRA gradient updates |
+
+### Evaluation (vLLM — requires GPU)
+
+| Component | Runs On | Details |
+|-----------|---------|---------|
+| Browser (Playwright) | TensorDock | Headless Chromium |
 | vLLM Server | TensorDock | Policy inference on GPU |
-| Training Loop | TensorDock | LoRA weight updates on GPU |
 
-**Recommended TensorDock Config:**
+**Recommended TensorDock Config for Eval:**
 
-| GPU | VRAM | Price | Notes |
-|-----|------|-------|-------|
-| H100 SXM5 | 80GB | ~$2.25/hr | Best performance, fits 70B models |
-| A100 SXM4 | 80GB | ~$1.50/hr | Good balance of cost/performance |
-| A100 PCIe | 40GB | ~$1.00/hr | Budget option, fits up to 13B |
-
-For Qwen2.5-3B, even A100-40GB is sufficient. H100 gives faster inference.
-
-**TensorDock Setup:**
-```bash
-# 1. Spin up instance (Ubuntu 22.04, H100 or A100)
-# 2. SSH in and run setup script
-# 3. Start vLLM server
-# 4. Run training loop - everything is localhost
-python scripts/train_online_grpo.py --policy_url http://localhost:8000
-```
+| GPU | VRAM | Notes |
+|-----|------|-------|
+| H100 SXM5 | 80GB | Best performance |
+| A100 SXM4 | 80GB | Good balance |
 
 ## Key Hyperparameters
 
 ```yaml
-# Online GRPO
-num_generations: 8        # Actions per state
-temperature: 0.7          # Exploration vs exploitation
-learning_rate: 1e-6       # Small for stability
-loss_type: dr_grpo        # Handles low reward variance
-kl_coef: 0.001           # Regularization
+# Tinker Online GRPO (primary)
+num_envs: 8               # GRPO group size
+loss_fn: importance_sampling  # RL loss function
+learning_rate: 1e-6        # Small for stability
+lora_rank: 32              # LoRA adapter rank
+temperature: 0.7           # Sampling temperature
+max_tokens: 300            # Max tokens per model response
+max_steps: 70              # Max steps per episode
+
+# Reward shaping
+progress_weight: 1.0       # Dense progress reward
+novelty_bonus: 0.2         # New state bonus
+loop_penalty: -0.5         # Loop detection penalty
+action_error_penalty: -0.2 # Invalid action penalty
+success_bonus: 1.0         # Task completion bonus
 
 # MCTS
 num_simulations: 50       # Tree search depth
@@ -283,12 +308,14 @@ max_children: 5           # Actions per node
 
 ## Verified Technical Facts
 
-**Qwen3-VL-8B:** Vision-Language Model with native GUI agent capability. Has official Computer-Use cookbook. Supports 2D grounding (click coordinates). ~20GB VRAM for inference, fits on H100 with room for training.
+**Qwen3-VL-30B-A3B:** MoE Vision-Language Model (30B total, 3B active). Native GUI agent capability. Supports 2D grounding (click coordinates). Supported by Tinker API for distributed online RL.
 
-**GRPO zero-variance problem:** Real. When all rewards in a group are identical, advantages are zero, gradients are zero. Mitigate with `loss_type="dr_grpo"` (mean-centering only, no std normalization).
+**Tinker API:** Distributed RL training API by Thinking Machines Lab. Primitives: `sample()`, `forward_backward()`, `optim_step()`. Hosts the model remotely — no local GPU needed for training. Supports LoRA fine-tuning.
+
+**GRPO zero-variance problem:** Real. When all rewards in a group are identical, advantages are zero, gradients are zero. Tinker's `importance_sampling` loss handles this better than standard GRPO for high-variance browser tasks.
 
 **Agent Q results:** LLaMA-3 70B went from 18.6% → 81.7% on OpenTable using MCTS + step-level DPO. MCTS with 95.4% at inference time.
 
-**REAL benchmark SOTA:** 41.1% (Claude-3.7-Sonnet-Thinking). Our target is >30% with an 8B VLM.
+**REAL benchmark SOTA:** 41.1% (Claude-3.7-Sonnet-Thinking). Our target is >30% with online RL on Qwen3-VL-30B-A3B.
 
-**vLLM VLM support:** Requires `vllm>=0.11.0`. Supports image inputs via OpenAI-compatible API.
+**vLLM VLM support:** Requires `vllm>=0.11.0`. Used for local evaluation inference only (training uses Tinker API).

@@ -1,7 +1,7 @@
 """Orchestrator for HALO Agent.
 
 Simplified for Online RL - just policy -> action -> reward.
-Uses Qwen3-VL-8B Vision-Language Model for GUI control.
+Uses Qwen3-VL-30B-A3B Vision-Language Model (MoE) for GUI control.
 """
 
 import os
@@ -11,6 +11,7 @@ import logging
 from typing import Dict, Optional, Tuple, Any
 from dataclasses import dataclass
 
+from ..constants import DEFAULT_MODEL
 from ..obs import (
     summarize_observation, extract_actionable_nodes, get_obs_hash,
     build_state_key, state_key_hash, classify_page_type
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OrchestratorConfig:
     """Configuration for orchestrator."""
-    worker_model: str = "Qwen/Qwen3-VL-8B-Instruct"
+    worker_model: str = DEFAULT_MODEL
     max_steps: int = 70
     worker_temperature: float = 0.0
     # Recovery policies
@@ -47,16 +48,16 @@ class Orchestrator:
         self.mode = mode
 
         # Initialize worker policy based on mode
-        if mode == "gpt4o_baseline":
-            # GPT-4o for comparison / MCTS critic
-            self.worker = WorkerPolicy(model="gpt-4o", temperature=self.config.worker_temperature)
-            logger.info("Using GPT-4o baseline policy")
+        if mode == "gpt5_baseline":
+            # GPT-5.2 for comparison / MCTS critic (best vision model)
+            self.worker = WorkerPolicy(model="gpt-5.2", temperature=self.config.worker_temperature)
+            logger.info("Using GPT-5.2 baseline policy")
 
         elif mode.startswith('qwen3vl'):
-            # Qwen3-VL-8B Vision-Language Model modes
+            # Qwen3-VL-30B-A3B Vision-Language Model modes (MoE)
             qwen_backend = self.config.qwen_backend or "vllm"
             qwen_base_url = self.config.qwen_base_url or "http://localhost:8000/v1"
-            default_model_name = os.environ.get("HALO_WORKER_MODEL") or "Qwen/Qwen3-VL-8B-Instruct"
+            default_model_name = os.environ.get("HALO_WORKER_MODEL") or DEFAULT_MODEL
             requested = self.config.worker_model
 
             # Adapter paths for trained modes

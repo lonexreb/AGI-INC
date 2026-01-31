@@ -34,6 +34,13 @@ peft>=0.7.0            # LoRA adapters
 bitsandbytes>=0.41.0   # Quantization (optional)
 
 # =============================================================================
+# TINKER: Distributed Online RL via Tinker API
+# =============================================================================
+tinker                 # Tinker API client (sample, forward_backward, optim_step)
+tinker-cookbook         # Tinker RL training loop, renderers, rollout utilities
+chz                    # Configuration library used by tinker-cookbook
+
+# =============================================================================
 # UTILITIES
 # =============================================================================
 tqdm>=4.66.0

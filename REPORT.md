@@ -181,10 +181,6 @@ AGI-INC/
 │   └── list_v2_tasks.py           # Task listing utility
 ├── configs/
 │   └── real_v2_task_registry.json # Task definitions
-├── docs/
-│   ├── RL_TRACK.md                # RL approach documentation
-│   ├── RUNBOOK.md                 # Operational guide
-│   └── UITARS_COMPARISON.md       # UI-TARS comparison
 └── tests/
     ├── unit/                      # Unit tests
     └── integration/               # Integration tests

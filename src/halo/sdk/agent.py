@@ -4,11 +4,10 @@ This module provides the HaloAgent class that integrates with AGI SDK v0.3.5
 for REAL Bench tasks. Simplified for Online RL - just policy -> action -> reward.
 
 Supported modes:
-- baseline_worker: GPT-4o-mini worker
-- qwen_worker_zero: Qwen zero-shot worker
-- qwen_worker_bc: Qwen + BC LoRA
-- qwen_worker_dpo: Qwen + DPO LoRA
-- qwen_worker_grpo: Qwen + GRPO LoRA
+- gpt5_baseline: GPT-5.2 baseline (best vision model)
+- qwen3vl_base: Qwen3-VL-30B-A3B base (before training)
+- qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
+- qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
 """
 
 import logging
@@ -20,6 +19,7 @@ from agisdk.REAL.browsergym.experiments.agent import Agent, AgentInfo
 
 from ..agent import Orchestrator, OrchestratorConfig
 from ..logging import TrajectoryLogger
+from ..constants import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -92,19 +92,19 @@ class HaloAgent(Agent):
     """HALO Agent implementation for AGI SDK.
 
     Simplified for Online RL - just policy -> action -> reward.
-    Uses Qwen3-VL-8B Vision-Language Model for GUI control.
+    Uses Qwen3-VL-30B-A3B Vision-Language Model (MoE) for GUI control.
 
     Supported modes:
-    - gpt4o_baseline: GPT-4o for comparison / MCTS critic
-    - qwen3vl_base: Qwen3-VL-8B base (before training)
+    - gpt5_baseline: GPT-5.2 for comparison / MCTS critic (best vision model)
+    - qwen3vl_base: Qwen3-VL-30B-A3B base (before training)
     - qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
     - qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
     """
 
     # Valid modes
     VALID_MODES = [
-        'gpt4o_baseline',    # GPT-4o for comparison / MCTS critic
-        'qwen3vl_base',      # Qwen3-VL-8B base (before training)
+        'gpt5_baseline',     # GPT-5.2 for comparison / MCTS critic (best vision)
+        'qwen3vl_base',      # Qwen3-VL-30B-A3B base (before training)
         'qwen3vl_grpo',      # Qwen3-VL + Online GRPO LoRA
         'qwen3vl_mcts',      # Qwen3-VL + MCTS-trained LoRA (Agent Q style)
     ]
@@ -112,7 +112,7 @@ class HaloAgent(Agent):
     def __init__(
         self,
         mode: str = "qwen3vl_base",
-        worker_model: str = "Qwen/Qwen3-VL-8B-Instruct",
+        worker_model: str = DEFAULT_MODEL,
         worker_temperature: float = 0.0,
         max_steps: int = 70,
         enable_recovery_policies: Optional[bool] = None,
@@ -123,7 +123,7 @@ class HaloAgent(Agent):
         use_cache: Optional[bool] = None,
         use_macros: Optional[bool] = None,
         use_manager: Optional[bool] = None,
-        manager_model: str = "gpt-4o",
+        manager_model: str = "gpt-5.2",
         manager_warm_start: Optional[bool] = None,
         always_call_manager: Optional[bool] = None,
     ) -> None:
@@ -134,12 +134,12 @@ class HaloAgent(Agent):
             logger.warning("use_cache, use_macros, use_manager are deprecated and ignored")
 
         # Set model based on mode
-        if mode == "gpt4o_baseline":
-            worker_model = "gpt-4o"
+        if mode == "gpt5_baseline":
+            worker_model = "gpt-5.2"
         elif mode.startswith("qwen3vl"):
             # All Qwen3-VL modes use the VLM
-            if worker_model == "Qwen/Qwen3-VL-8B-Instruct" or worker_model == "gpt-4o-mini":
-                worker_model = os.environ.get("HALO_WORKER_MODEL") or "Qwen/Qwen3-VL-8B-Instruct"
+            if worker_model == DEFAULT_MODEL or worker_model == "gpt-5.2":
+                worker_model = os.environ.get("HALO_WORKER_MODEL") or DEFAULT_MODEL
             if qwen_backend is None:
                 qwen_backend = os.environ.get("HALO_WORKER_BACKEND") or "vllm"
             if qwen_base_url is None:
@@ -279,8 +279,8 @@ def create_halo_agent(
 
     Args:
         mode: Agent mode:
-            - gpt4o_baseline: GPT-4o for comparison / MCTS critic
-            - qwen3vl_base: Qwen3-VL-8B base (before training)
+            - gpt5_baseline: GPT-5.2 for comparison / MCTS critic (best vision)
+            - qwen3vl_base: Qwen3-VL-30B-A3B base (before training)
             - qwen3vl_grpo: Qwen3-VL + Online GRPO LoRA
             - qwen3vl_mcts: Qwen3-VL + MCTS-trained LoRA (Agent Q style)
         traj_logger: Optional trajectory logger

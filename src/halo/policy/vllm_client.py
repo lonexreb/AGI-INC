@@ -1,4 +1,4 @@
-"""VLM Policy Client for Qwen3-VL-8B.
+"""VLM Policy Client for Qwen3-VL via vLLM.
 
 This module provides a clean wrapper for vLLM's OpenAI-compatible API
 with vision capabilities. It handles batched action sampling with image inputs.
@@ -19,6 +19,8 @@ import logging
 import re
 from typing import List, Optional, Dict, Any, Set
 
+from ..constants import DEFAULT_MODEL
+
 logger = logging.getLogger(__name__)
 
 # Action grammar for VLM prompts
@@ -38,7 +40,7 @@ ACTION_GRAMMAR = """Available actions (use exact syntax):
 
 
 class VLLMPolicyClient:
-    """VLM Policy Client for Qwen3-VL-8B via vLLM.
+    """VLM Policy Client for Qwen3-VL via vLLM.
 
     Handles:
     - Screenshot encoding (base64)
@@ -54,7 +56,7 @@ class VLLMPolicyClient:
     def __init__(
         self,
         base_url: str = "http://localhost:8000/v1",
-        model: str = "Qwen/Qwen3-VL-8B-Instruct",
+        model: str = DEFAULT_MODEL,
         max_tokens: int = 300,
         timeout: float = 60.0,
     ):
@@ -372,7 +374,7 @@ Output format:
 
 def create_vlm_client(
     base_url: str = "http://localhost:8000/v1",
-    model: str = "Qwen/Qwen3-VL-8B-Instruct",
+    model: str = DEFAULT_MODEL,
     **kwargs
 ) -> VLLMPolicyClient:
     """Factory function to create VLM policy client.
